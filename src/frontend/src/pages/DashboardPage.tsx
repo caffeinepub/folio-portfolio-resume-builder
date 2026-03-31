@@ -1,6 +1,7 @@
 import type {
   Education,
   PersonalInfo,
+  PortfolioDTO,
   Project,
   WorkExperience,
 } from "@/backend";
@@ -20,6 +21,10 @@ import {
   useSetPublished,
   useUpgradeToPro,
 } from "@/hooks/useQueries";
+import TemplateClassic from "@/templates/TemplateClassic";
+import TemplateCreative from "@/templates/TemplateCreative";
+import TemplateMinimal from "@/templates/TemplateMinimal";
+import TemplateModern from "@/templates/TemplateModern";
 import { parseResumeFromPDF } from "@/utils/resumeParser";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -42,7 +47,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const emptyPersonal: PersonalInfo = {
@@ -74,6 +79,16 @@ const emptyProject: Project = {
   name: "",
   description: "",
   url: "",
+};
+
+const TEMPLATE_MAP: Record<
+  string,
+  React.ComponentType<{ portfolio: PortfolioDTO }>
+> = {
+  modern: TemplateModern,
+  classic: TemplateClassic,
+  minimal: TemplateMinimal,
+  creative: TemplateCreative,
 };
 
 type EditorTab =
@@ -118,6 +133,36 @@ export default function DashboardPage() {
     return localStorage.getItem("portfolio-template") || "modern";
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const previewPortfolio = useMemo<PortfolioDTO>(
+    () => ({
+      resume: {
+        personal,
+        work,
+        education,
+        skills,
+        projects,
+        lastUpdated: BigInt(0),
+      },
+      credits: BigInt(0),
+      username,
+      isPublished: portfolio?.isPublished ?? false,
+      displayName: displayName || "Your Name",
+      owner: portfolio?.owner ?? ({} as any),
+      plan: portfolio?.plan ?? Plan.free,
+      lastUpdated: BigInt(0),
+    }),
+    [
+      personal,
+      work,
+      education,
+      skills,
+      projects,
+      username,
+      displayName,
+      portfolio,
+    ],
+  );
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -1585,224 +1630,33 @@ export default function DashboardPage() {
               </div>
             </div>
             <div
-              className="flex-1 overflow-y-auto p-6"
+              className="flex-1 overflow-y-auto"
               style={{ background: "#0B1020" }}
             >
-              {/* Paper-like resume document */}
-              <div
-                className="rounded-2xl p-8 min-h-full shadow-2xl"
-                style={{ background: "#F6F8FC", color: "#1A2233" }}
-              >
-                {/* Header section */}
-                <div
-                  className="mb-6 pb-5"
-                  style={{ borderBottom: "2px solid #E8EDF5" }}
-                >
-                  <h2
-                    className="text-2xl font-bold mb-1"
-                    style={{ color: "#1A2233", fontFamily: "inherit" }}
-                  >
-                    {personal.name || displayName || "Your Name"}
-                  </h2>
-                  {personal.title && (
-                    <p
-                      className="text-sm font-semibold mb-2"
-                      style={{ color: "#4D7CFF" }}
-                    >
-                      {personal.title}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {personal.email && (
-                      <span className="text-xs" style={{ color: "#5A6A8A" }}>
-                        {personal.email}
-                      </span>
-                    )}
-                    {personal.phone && (
-                      <span className="text-xs" style={{ color: "#5A6A8A" }}>
-                        {personal.phone}
-                      </span>
-                    )}
-                    {personal.website && (
-                      <span className="text-xs" style={{ color: "#4D7CFF" }}>
-                        {personal.website}
-                      </span>
-                    )}
-                  </div>
-                  {personal.bio && (
-                    <p
-                      className="text-xs mt-3 leading-relaxed"
-                      style={{ color: "#3A4A6A" }}
-                    >
-                      {personal.bio}
-                    </p>
-                  )}
+              {personal.name ||
+              work.length > 0 ||
+              education.length > 0 ||
+              skills.length > 0 ? (
+                <div style={{ zoom: 0.55, pointerEvents: "none" }}>
+                  {(() => {
+                    const ActiveTemplate =
+                      TEMPLATE_MAP[selectedTemplate] ?? TemplateModern;
+                    return <ActiveTemplate portfolio={previewPortfolio} />;
+                  })()}
                 </div>
-
-                {/* Work Experience */}
-                {work.length > 0 && (
-                  <div className="mb-5">
-                    <h3
-                      className="text-xs font-bold uppercase tracking-widest mb-3"
-                      style={{ color: "#4D7CFF" }}
-                    >
-                      Experience
-                    </h3>
-                    <div className="space-y-3">
-                      {work.map((job, i) => (
-                        <div key={`prev-work-${job.company}-${i}`}>
-                          <div className="flex justify-between items-baseline mb-0.5">
-                            <p
-                              className="text-sm font-semibold"
-                              style={{ color: "#1A2233" }}
-                            >
-                              {job.role || "Role"}
-                            </p>
-                            <span
-                              className="text-xs"
-                              style={{ color: "#8FA0C6" }}
-                            >
-                              {job.startDate}
-                              {job.endDate ? ` – ${job.endDate}` : ""}
-                            </span>
-                          </div>
-                          <p
-                            className="text-xs font-medium mb-1"
-                            style={{ color: "#4D7CFF" }}
-                          >
-                            {job.company}
-                          </p>
-                          {job.description && (
-                            <p
-                              className="text-xs leading-relaxed"
-                              style={{ color: "#3A4A6A" }}
-                            >
-                              {job.description}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Education */}
-                {education.length > 0 && (
-                  <div className="mb-5">
-                    <h3
-                      className="text-xs font-bold uppercase tracking-widest mb-3"
-                      style={{ color: "#4D7CFF" }}
-                    >
-                      Education
-                    </h3>
-                    <div className="space-y-2">
-                      {education.map((edu, i) => (
-                        <div key={`prev-edu-${edu.institution}-${i}`}>
-                          <div className="flex justify-between items-baseline">
-                            <p
-                              className="text-sm font-semibold"
-                              style={{ color: "#1A2233" }}
-                            >
-                              {edu.degree} {edu.field ? `in ${edu.field}` : ""}
-                            </p>
-                            <span
-                              className="text-xs"
-                              style={{ color: "#8FA0C6" }}
-                            >
-                              {edu.startYear}
-                              {edu.endYear ? ` – ${edu.endYear}` : ""}
-                            </span>
-                          </div>
-                          <p
-                            className="text-xs font-medium"
-                            style={{ color: "#4D7CFF" }}
-                          >
-                            {edu.institution}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Skills */}
-                {skills.length > 0 && (
-                  <div className="mb-5">
-                    <h3
-                      className="text-xs font-bold uppercase tracking-widest mb-3"
-                      style={{ color: "#4D7CFF" }}
-                    >
-                      Skills
-                    </h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {skills.map((skill) => (
-                        <span
-                          key={skill}
-                          className="text-xs px-2.5 py-1 rounded-full font-medium"
-                          style={{ background: "#E8EDF5", color: "#3A4A6A" }}
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Projects */}
-                {projects.length > 0 && (
-                  <div>
-                    <h3
-                      className="text-xs font-bold uppercase tracking-widest mb-3"
-                      style={{ color: "#4D7CFF" }}
-                    >
-                      Projects
-                    </h3>
-                    <div className="space-y-2">
-                      {projects.map((proj, i) => (
-                        <div key={`prev-proj-${proj.name}-${i}`}>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: "#1A2233" }}
-                          >
-                            {proj.name}
-                          </p>
-                          {proj.url && (
-                            <p className="text-xs" style={{ color: "#4D7CFF" }}>
-                              {proj.url}
-                            </p>
-                          )}
-                          {proj.description && (
-                            <p
-                              className="text-xs leading-relaxed"
-                              style={{ color: "#3A4A6A" }}
-                            >
-                              {proj.description}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Empty state for preview */}
-                {!personal.name &&
-                  work.length === 0 &&
-                  education.length === 0 &&
-                  skills.length === 0 && (
-                    <div
-                      className="flex flex-col items-center justify-center py-16"
-                      style={{ color: "#8FA0C6" }}
-                    >
-                      <FileText className="w-10 h-10 mb-3 opacity-40" />
-                      <p className="text-sm text-center opacity-60">
-                        Fill in your details on the left
-                        <br />
-                        to see your resume preview here
-                      </p>
-                    </div>
-                  )}
-              </div>
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center h-full py-16"
+                  style={{ color: "#8FA0C6" }}
+                >
+                  <FileText className="w-10 h-10 mb-3 opacity-40" />
+                  <p className="text-sm text-center opacity-60">
+                    Fill in your details on the left
+                    <br />
+                    to see your resume preview here
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
