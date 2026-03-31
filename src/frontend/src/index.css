@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "BricolageGrotesque";
+  src: url("/assets/fonts/BricolageGrotesque.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PlusJakartaSans";
+  src: url("/assets/fonts/PlusJakartaSans.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.875rem;
+    /* Light mode (fallback) */
+    --background: 0.98 0 0;
+    --foreground: 0.12 0.01 255;
+    --card: 0.95 0 0;
+    --card-foreground: 0.12 0 0;
+    --popover: 0.98 0 0;
+    --popover-foreground: 0.12 0 0;
+    --primary: 0.58 0.22 265;
+    --primary-foreground: 0.99 0 0;
+    --secondary: 0.92 0.01 255;
+    --secondary-foreground: 0.15 0.02 255;
+    --muted: 0.92 0.005 255;
+    --muted-foreground: 0.5 0.01 255;
+    --accent: 0.92 0.01 255;
+    --accent-foreground: 0.15 0.02 255;
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 0.985 0 0;
+    --border: 0.86 0.01 255;
+    --input: 0.86 0.01 255;
+    --ring: 0.58 0.22 265;
+    --chart-1: 0.58 0.22 265;
+    --chart-2: 0.6 0.18 162;
+    --chart-3: 0.7 0.15 84;
+    --chart-4: 0.65 0.2 303;
+    --chart-5: 0.64 0.24 16;
+    --sidebar: 0.95 0 0;
+    --sidebar-foreground: 0.12 0 0;
+    --sidebar-primary: 0.58 0.22 265;
+    --sidebar-primary-foreground: 0.99 0 0;
+    --sidebar-accent: 0.9 0.01 255;
+    --sidebar-accent-foreground: 0.15 0.02 255;
+    --sidebar-border: 0.86 0.01 255;
+    --sidebar-ring: 0.58 0.22 265;
+  }
+
+  .dark {
+    /* Deep charcoal #0B0F17 → oklch(0.11 0.018 255) */
+    --background: 0.11 0.018 255;
+    /* Near-white #E5E7EB → oklch(0.91 0.005 255) */
+    --foreground: 0.91 0.005 255;
+    /* Card #141A24 → oklch(0.14 0.022 255) */
+    --card: 0.14 0.022 255;
+    --card-foreground: 0.91 0.005 255;
+    /* Popover #161C26 → oklch(0.16 0.022 255) */
+    --popover: 0.16 0.022 255;
+    --popover-foreground: 0.91 0.005 255;
+    /* Primary accent #3B82F6 → oklch(0.58 0.22 265) */
+    --primary: 0.58 0.22 265;
+    --primary-foreground: 0.99 0 0;
+    /* Secondary #1A2232 */
+    --secondary: 0.19 0.028 255;
+    --secondary-foreground: 0.91 0.005 255;
+    /* Muted */
+    --muted: 0.19 0.02 255;
+    /* Muted text #9CA3AF → oklch(0.65 0.01 255) */
+    --muted-foreground: 0.65 0.012 255;
+    /* Accent hover #2563EB → oklch(0.52 0.22 265) */
+    --accent: 0.52 0.22 265;
+    --accent-foreground: 0.99 0 0;
+    --destructive: 0.65 0.22 25;
+    --destructive-foreground: 0.99 0 0;
+    /* Border #263041 → oklch(0.22 0.03 255) */
+    --border: 0.22 0.03 255;
+    --input: 0.22 0.03 255;
+    --ring: 0.58 0.22 265;
+    --chart-1: 0.58 0.22 265;
+    --chart-2: 0.62 0.18 162;
+    --chart-3: 0.72 0.15 84;
+    --chart-4: 0.65 0.2 303;
+    --chart-5: 0.64 0.24 16;
+    --sidebar: 0.13 0.022 255;
+    --sidebar-foreground: 0.91 0.005 255;
+    --sidebar-primary: 0.58 0.22 265;
+    --sidebar-primary-foreground: 0.99 0 0;
+    --sidebar-accent: 0.19 0.025 255;
+    --sidebar-accent-foreground: 0.91 0.005 255;
+    --sidebar-border: 0.22 0.03 255;
+    --sidebar-ring: 0.58 0.22 265;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
