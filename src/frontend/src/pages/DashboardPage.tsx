@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useTheme } from "@/context/ThemeContext";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import {
   useCallerUserProfile,
@@ -32,6 +33,7 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Palette,
   Plus,
   Settings,
   Trash2,
@@ -80,7 +82,8 @@ type EditorTab =
   | "education"
   | "skills"
   | "projects"
-  | "import";
+  | "import"
+  | "design";
 type SidebarSection = "dashboard" | "resume" | "portfolio" | "settings";
 
 export default function DashboardPage() {
@@ -97,6 +100,7 @@ export default function DashboardPage() {
     useUpgradeToPro();
 
   const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [hasDismissedSetup, setHasDismissedSetup] = useState(false);
   const [personal, setPersonal] = useState<PersonalInfo>(emptyPersonal);
   const [work, setWork] = useState<WorkExperience[]>([]);
   const [education, setEducation] = useState<Education[]>([]);
@@ -109,6 +113,10 @@ export default function DashboardPage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [activeTab, setActiveTab] = useState<EditorTab>("personal");
   const [activeSection, setActiveSection] = useState<SidebarSection>("resume");
+  const { accentColor, setAccentColor } = useTheme();
+  const [selectedTemplate, setSelectedTemplate] = useState<string>(() => {
+    return localStorage.getItem("portfolio-template") || "modern";
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect if not authenticated
@@ -131,10 +139,22 @@ export default function DashboardPage() {
   }, [portfolio]);
 
   useEffect(() => {
-    if (!profileLoading && !portfolioLoading && !userProfile && identity) {
+    if (
+      !profileLoading &&
+      !portfolioLoading &&
+      !userProfile &&
+      identity &&
+      !hasDismissedSetup
+    ) {
       setShowProfileSetup(true);
     }
-  }, [profileLoading, portfolioLoading, userProfile, identity]);
+  }, [
+    profileLoading,
+    portfolioLoading,
+    userProfile,
+    identity,
+    hasDismissedSetup,
+  ]);
 
   const handlePDFFile = async (file: File) => {
     if (!file || file.type !== "application/pdf") {
@@ -144,6 +164,7 @@ export default function DashboardPage() {
     setIsExtracting(true);
     try {
       const parsed = await parseResumeFromPDF(file);
+      // Replace fields instead of appending to avoid duplicates on re-upload
       setPersonal((prev) => ({
         ...prev,
         ...(parsed.personal.name ? { name: parsed.personal.name } : {}),
@@ -152,17 +173,15 @@ export default function DashboardPage() {
         ...(parsed.personal.phone ? { phone: parsed.personal.phone } : {}),
         ...(parsed.personal.bio ? { bio: parsed.personal.bio } : {}),
       }));
-      if (parsed.work.length > 0) setWork((prev) => [...prev, ...parsed.work]);
-      if (parsed.education.length > 0)
-        setEducation((prev) => [...prev, ...parsed.education]);
-      if (parsed.projects.length > 0)
-        setProjects((prev) => [...prev, ...parsed.projects]);
-      if (parsed.skills.length > 0)
-        setSkills((prev) => [
-          ...prev,
-          ...parsed.skills.filter((s) => !prev.includes(s)),
-        ]);
-      toast.success("Resume imported! Review and save your changes.");
+      if (parsed.work.length > 0) setWork(parsed.work);
+      if (parsed.education.length > 0) setEducation(parsed.education);
+      if (parsed.projects.length > 0) setProjects(parsed.projects);
+      if (parsed.skills.length > 0) setSkills(parsed.skills);
+      // Switch to personal tab so user can see filled fields immediately
+      setActiveTab("personal");
+      toast.success(
+        `Resume imported! Found ${parsed.work.length} jobs, ${parsed.education.length} education entries, ${parsed.skills.length} skills.`,
+      );
     } catch {
       toast.error("Could not parse resume. Please fill in manually.");
     } finally {
@@ -269,6 +288,11 @@ export default function DashboardPage() {
         label: "Import PDF",
         icon: <Upload className="w-3.5 h-3.5" />,
       },
+      {
+        id: "design",
+        label: "Design",
+        icon: <Palette className="w-3.5 h-3.5" />,
+      },
     ];
 
   const sidebarNav: {
@@ -319,7 +343,23 @@ export default function DashboardPage() {
     >
       <ProfileSetupModal
         open={showProfileSetup}
-        onComplete={() => setShowProfileSetup(false)}
+        onComplete={(resumeData) => {
+          setShowProfileSetup(false);
+          setHasDismissedSetup(true);
+          if (resumeData) {
+            setPersonal((prev) => ({ ...prev, ...resumeData.personal }));
+            if (resumeData.work.length > 0) setWork(resumeData.work);
+            if (resumeData.education.length > 0)
+              setEducation(resumeData.education);
+            if (resumeData.skills.length > 0) setSkills(resumeData.skills);
+            if (resumeData.projects.length > 0)
+              setProjects(resumeData.projects);
+          }
+        }}
+        onClose={() => {
+          setShowProfileSetup(false);
+          setHasDismissedSetup(true);
+        }}
       />
 
       {/* Fixed Left Sidebar */}
@@ -1212,6 +1252,303 @@ export default function DashboardPage() {
                           </AnimatePresence>
                         </label>
                       </SectionCard>
+                    </div>
+                  )}
+
+                  {/* Design Tab */}
+                  {activeTab === "design" && (
+                    <div
+                      className="space-y-8"
+                      data-ocid="dashboard.design.panel"
+                    >
+                      {/* Template Picker */}
+                      <div>
+                        <p
+                          className="text-xs font-semibold uppercase tracking-widest mb-5"
+                          style={{ color: "#8FA0C6" }}
+                        >
+                          Portfolio Template
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {(
+                            [
+                              {
+                                key: "modern",
+                                label: "Modern",
+                                desc: "Gradient hero with card sections",
+                                preview: (
+                                  <div
+                                    className="h-16 rounded-lg overflow-hidden relative"
+                                    style={{ background: "#0F1623" }}
+                                  >
+                                    <div
+                                      className="absolute inset-x-0 top-0 h-8"
+                                      style={{
+                                        background:
+                                          "linear-gradient(to bottom, rgba(77,124,255,0.18), transparent)",
+                                      }}
+                                    />
+                                    <div
+                                      className="absolute left-1/2 -translate-x-1/2 top-2 w-6 h-6 rounded-full"
+                                      style={{
+                                        background:
+                                          "linear-gradient(135deg,#4D7CFF,#35C6FF)",
+                                      }}
+                                    />
+                                    <div className="absolute bottom-2 left-3 right-3 space-y-1">
+                                      <div
+                                        className="h-1.5 rounded-full w-full"
+                                        style={{ background: "#1B2A44" }}
+                                      />
+                                      <div
+                                        className="h-1.5 rounded-full w-3/4"
+                                        style={{ background: "#1B2A44" }}
+                                      />
+                                    </div>
+                                  </div>
+                                ),
+                              },
+                              {
+                                key: "minimal",
+                                label: "Minimal",
+                                desc: "Clean typography with dividers",
+                                preview: (
+                                  <div
+                                    className="h-16 rounded-lg overflow-hidden px-3 pt-3 space-y-1.5"
+                                    style={{ background: "#0F1623" }}
+                                  >
+                                    <div
+                                      className="h-2 rounded-full w-1/2"
+                                      style={{ background: "#EAF0FF" }}
+                                    />
+                                    <div
+                                      className="h-px w-full"
+                                      style={{ background: "#1B2A44" }}
+                                    />
+                                    <div
+                                      className="h-1 rounded-full w-4/5"
+                                      style={{ background: "#203255" }}
+                                    />
+                                    <div
+                                      className="h-1 rounded-full w-2/3"
+                                      style={{ background: "#203255" }}
+                                    />
+                                  </div>
+                                ),
+                              },
+                              {
+                                key: "creative",
+                                label: "Creative",
+                                desc: "Bold sidebar with timeline",
+                                preview: (
+                                  <div
+                                    className="h-16 rounded-lg overflow-hidden flex"
+                                    style={{ background: "#0F1623" }}
+                                  >
+                                    <div
+                                      className="w-1/3 h-full"
+                                      style={{
+                                        background: "rgba(77,124,255,0.1)",
+                                        borderRight:
+                                          "1px solid rgba(77,124,255,0.15)",
+                                      }}
+                                    >
+                                      <div className="p-2 space-y-1">
+                                        <div
+                                          className="w-5 h-5 rounded-full mx-auto"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg,#4D7CFF,#35C6FF)",
+                                          }}
+                                        />
+                                        <div
+                                          className="h-1 rounded-full w-full"
+                                          style={{ background: "#203255" }}
+                                        />
+                                        <div
+                                          className="h-1 rounded-full w-3/4"
+                                          style={{ background: "#203255" }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="flex-1 p-2 space-y-1.5">
+                                      <div
+                                        className="h-1 rounded-full w-full"
+                                        style={{ background: "#1B2A44" }}
+                                      />
+                                      <div
+                                        className="h-1 rounded-full w-4/5"
+                                        style={{ background: "#1B2A44" }}
+                                      />
+                                      <div
+                                        className="h-1 rounded-full w-3/5"
+                                        style={{ background: "#1B2A44" }}
+                                      />
+                                    </div>
+                                  </div>
+                                ),
+                              },
+                              {
+                                key: "classic",
+                                label: "Classic",
+                                desc: "Two-column resume layout",
+                                preview: (
+                                  <div
+                                    className="h-16 rounded-lg overflow-hidden"
+                                    style={{
+                                      background: "#0F1623",
+                                      border: "1px solid #1B2A44",
+                                    }}
+                                  >
+                                    <div
+                                      className="h-5 px-2 flex items-center"
+                                      style={{
+                                        borderBottom: "1px solid #1B2A44",
+                                      }}
+                                    >
+                                      <div
+                                        className="h-1.5 rounded-full w-1/3"
+                                        style={{ background: "#EAF0FF" }}
+                                      />
+                                    </div>
+                                    <div className="flex h-[calc(100%-1.25rem)]">
+                                      <div
+                                        className="w-1/3 p-1.5 space-y-1"
+                                        style={{
+                                          borderRight: "1px solid #1B2A44",
+                                        }}
+                                      >
+                                        <div
+                                          className="h-1 rounded-full w-full"
+                                          style={{ background: "#203255" }}
+                                        />
+                                        <div
+                                          className="h-1 rounded-full w-3/4"
+                                          style={{ background: "#203255" }}
+                                        />
+                                      </div>
+                                      <div className="flex-1 p-1.5 space-y-1">
+                                        <div
+                                          className="h-1 rounded-full w-full"
+                                          style={{ background: "#1B2A44" }}
+                                        />
+                                        <div
+                                          className="h-1 rounded-full w-4/5"
+                                          style={{ background: "#1B2A44" }}
+                                        />
+                                        <div
+                                          className="h-1 rounded-full w-3/5"
+                                          style={{ background: "#1B2A44" }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                ),
+                              },
+                            ] as {
+                              key: string;
+                              label: string;
+                              desc: string;
+                              preview: React.ReactNode;
+                            }[]
+                          ).map((tmpl) => {
+                            const isSelected = selectedTemplate === tmpl.key;
+                            return (
+                              <button
+                                key={tmpl.key}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTemplate(tmpl.key);
+                                  localStorage.setItem(
+                                    "portfolio-template",
+                                    tmpl.key,
+                                  );
+                                }}
+                                className="text-left rounded-xl p-3 transition-all duration-200"
+                                style={{
+                                  border: isSelected
+                                    ? "2px solid #4D7CFF"
+                                    : "2px solid #1B2A44",
+                                  background: isSelected
+                                    ? "rgba(77,124,255,0.08)"
+                                    : "#0E1628",
+                                }}
+                                data-ocid="dashboard.design.button"
+                              >
+                                {tmpl.preview}
+                                <p
+                                  className="text-xs font-semibold mt-2"
+                                  style={{
+                                    color: isSelected ? "#4D7CFF" : "#EAF0FF",
+                                  }}
+                                >
+                                  {tmpl.label}
+                                </p>
+                                <p
+                                  className="text-xs mt-0.5"
+                                  style={{ color: "#8FA0C6" }}
+                                >
+                                  {tmpl.desc}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Accent Color Picker */}
+                      <div>
+                        <p
+                          className="text-xs font-semibold uppercase tracking-widest mb-4"
+                          style={{ color: "#8FA0C6" }}
+                        >
+                          Accent Color
+                        </p>
+                        <div className="flex flex-wrap gap-3">
+                          {(
+                            [
+                              { hue: "265", label: "Blue" },
+                              { hue: "280", label: "Indigo" },
+                              { hue: "300", label: "Purple" },
+                              { hue: "340", label: "Pink" },
+                              { hue: "20", label: "Red" },
+                              { hue: "50", label: "Orange" },
+                              { hue: "80", label: "Yellow" },
+                              { hue: "150", label: "Green" },
+                              { hue: "185", label: "Teal" },
+                              { hue: "210", label: "Cyan" },
+                            ] as { hue: string; label: string }[]
+                          ).map(({ hue, label }) => {
+                            const isSelected = accentColor === hue;
+                            return (
+                              <button
+                                key={hue}
+                                type="button"
+                                title={label}
+                                onClick={() => setAccentColor(hue)}
+                                className="w-9 h-9 rounded-full transition-all duration-200 flex-shrink-0"
+                                style={{
+                                  background: `oklch(0.58 0.22 ${hue})`,
+                                  outline: isSelected
+                                    ? `3px solid oklch(0.58 0.22 ${hue})`
+                                    : "3px solid transparent",
+                                  outlineOffset: "3px",
+                                  boxShadow: isSelected
+                                    ? "0 0 0 1px #0B1020"
+                                    : "none",
+                                }}
+                                data-ocid="dashboard.design.toggle"
+                              />
+                            );
+                          })}
+                        </div>
+                        <p
+                          className="text-xs mt-3"
+                          style={{ color: "#8FA0C6" }}
+                        >
+                          Changes apply instantly across your portfolio.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </motion.div>

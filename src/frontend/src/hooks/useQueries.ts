@@ -105,8 +105,9 @@ export function useSaveUserProfile() {
       if (!actor) throw new Error("Not connected");
       return actor.saveCallerUserProfile(profile);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["callerProfile"] });
+    onSuccess: (_, profile) => {
+      // Immediately set cache to prevent modal from reopening before refetch
+      queryClient.setQueryData(["callerProfile"], profile);
     },
   });
 }

@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/context/ThemeContext";
 import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import LandingPage from "@/pages/LandingPage";
@@ -14,7 +15,7 @@ import {
 // Root route
 const rootRoute = createRootRoute({
   component: () => (
-    <div className="dark">
+    <div>
       <Outlet />
       <Toaster position="top-right" />
     </div>
@@ -65,5 +66,9 @@ declare module "@tanstack/react-router" {
 }
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <ThemeProvider>
+      <RouterProvider router={router} />
+    </ThemeProvider>
+  );
 }
