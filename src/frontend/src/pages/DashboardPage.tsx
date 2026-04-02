@@ -29,6 +29,7 @@ import { parseResumeFromPDF } from "@/utils/resumeParser";
 import { useRouter } from "@tanstack/react-router";
 import {
   Briefcase,
+  Camera,
   Code2,
   ExternalLink,
   FileText,
@@ -132,7 +133,11 @@ export default function DashboardPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>(() => {
     return localStorage.getItem("portfolio-template") || "modern";
   });
+  const [avatarUrl, setAvatarUrl] = useState<string>(
+    () => localStorage.getItem("folio-avatar") ?? "",
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sidebarAvatarInputRef = useRef<HTMLInputElement>(null);
 
   const previewPortfolio = useMemo<PortfolioDTO>(
     () => ({
@@ -388,17 +393,36 @@ export default function DashboardPage() {
     >
       <ProfileSetupModal
         open={showProfileSetup}
-        onComplete={(resumeData) => {
+        onComplete={(
+          resumeData,
+          avatarDataUrl,
+          modalUsername,
+          modalDisplayName,
+        ) => {
           setShowProfileSetup(false);
           setHasDismissedSetup(true);
+          if (avatarDataUrl) {
+            setAvatarUrl(avatarDataUrl);
+          }
+          // Apply username and displayName from the modal immediately
+          if (modalUsername) setUsername(modalUsername);
+          if (modalDisplayName) setDisplayName(modalDisplayName);
           if (resumeData) {
-            setPersonal((prev) => ({ ...prev, ...resumeData.personal }));
+            // Ensure personal.name matches the displayName used in the modal
+            const personalData = {
+              ...resumeData.personal,
+              name: resumeData.personal.name || modalDisplayName || "",
+            };
+            setPersonal((prev) => ({ ...prev, ...personalData }));
             if (resumeData.work.length > 0) setWork(resumeData.work);
             if (resumeData.education.length > 0)
               setEducation(resumeData.education);
             if (resumeData.skills.length > 0) setSkills(resumeData.skills);
             if (resumeData.projects.length > 0)
               setProjects(resumeData.projects);
+          } else if (modalDisplayName) {
+            // No resume — at least set the name from the display name
+            setPersonal((prev) => ({ ...prev, name: modalDisplayName }));
           }
         }}
         onClose={() => {
@@ -436,13 +460,53 @@ export default function DashboardPage() {
 
           {/* Avatar + User */}
           <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-              style={{
-                background: "linear-gradient(135deg, #4D7CFF, #35C6FF)",
-              }}
-            >
-              {(displayName || personal.name || "U").charAt(0).toUpperCase()}
+            <div className="relative group flex-shrink-0">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="avatar"
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                  style={{
+                    background: "linear-gradient(135deg, #4D7CFF, #35C6FF)",
+                  }}
+                >
+                  {(displayName || personal.name || "U")
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => sidebarAvatarInputRef.current?.click()}
+                className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                style={{ background: "rgba(0,0,0,0.55)" }}
+                title="Change photo"
+              >
+                <Camera className="w-3.5 h-3.5 text-white" />
+              </button>
+              <input
+                ref={sidebarAvatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const result = ev.target?.result;
+                    if (typeof result === "string") {
+                      setAvatarUrl(result);
+                      localStorage.setItem("folio-avatar", result);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
             </div>
             <div className="min-w-0">
               <p

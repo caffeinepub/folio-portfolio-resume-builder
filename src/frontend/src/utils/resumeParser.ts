@@ -13,6 +13,15 @@ const PDFJS_WORKER_CDN =
 
 let pdfjsLib: any = null;
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("PDF parsing timed out")), ms),
+    ),
+  ]);
+}
+
 async function getPdfjsLib() {
   if (pdfjsLib) return pdfjsLib;
   // biome-ignore lint/suspicious/noExplicitAny: dynamic CDN import
@@ -330,7 +339,7 @@ function extractEducation(lines: string[]): Education[] {
       if (withoutYears.length > 2) {
         if (hasDegree) {
           const degMatch = withoutYears.match(
-            /\b(bachelor[\w\s]*|master[\w\s]*|phd[\w\s]*|doctor[\w\s]*|associate[\w\s]*|b\.?s\.?[\w\s]*|m\.?s\.?[\w\s]*|b\.?a\.?[\w\s]*|m\.?b\.?a\.?[\w\s]*|m\.?eng[\w\s]*|b\.?eng[\w\s]*|b\.?tech[\w\s]*|m\.?tech[\w\s]*|diploma[\w\s]*|certificate[\w\s]*)/i,
+            /\b(bachelor[\w\s]*|master[\w\s]*|phd[\w\s]*|doctor[\w\s]*|associate[\w\s]*|b\.?s\.?[\w\s]*|m\.?s\.?[\w\s]*|b\.?a\.?[\w\s]*|m\.?b\.?a\.?[\w\s]*|m\.?eng[\w\s]*|b\.?eng[\w\s]*|b\.?tech[\w\s]*|m\.?tech[\w\s]*|diploma[\w\s]*|certificate[\w\s]*)\b/i,
           );
           current.degree = degMatch ? degMatch[0].trim() : withoutYears;
         } else {
@@ -429,7 +438,7 @@ export async function parseResumeFromPDF(file: File): Promise<{
   skills: string[];
   projects: Project[];
 }> {
-  const rawText = await extractTextFromPDF(file);
+  const rawText = await withTimeout(extractTextFromPDF(file), 8000);
   const lines = rawText
     .split(/\n+/)
     .map((l) => l.trim())
