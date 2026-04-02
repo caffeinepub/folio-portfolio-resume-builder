@@ -5,7 +5,7 @@ import type {
   WorkExperience,
 } from "@/backend";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActor } from "@/hooks/useActor";
@@ -162,6 +162,9 @@ export default function ProfileSetupModal({
         }}
         data-ocid="profile_setup.dialog"
       >
+        {/* Accessible dialog title (visually hidden — visible h2 is in the header below) */}
+        <DialogTitle className="sr-only">Set Up Your Profile</DialogTitle>
+
         {/* Gradient header */}
         <div
           className="relative px-7 pt-7 pb-5"
