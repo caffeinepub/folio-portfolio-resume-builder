@@ -1,35 +1,30 @@
 # Folio – Portfolio & Resume Builder
 
 ## Current State
-- Landing page with hero section, features, and pricing
-- Dashboard uses a top Navbar + tab-based layout (no sidebar)
-- Auth is handled inline via `useInternetIdentity` – no dedicated sign in/sign up page
-- `/dashboard` is not protected (no redirect if logged out)
-- Dashboard does not visually match the hero mockup image
+- Dashboard has a fixed left sidebar with sections: Dashboard, Resume, Portfolio, Settings
+- Resume section has editor tabs: Personal, Work, Education, Skills, Projects, Import PDF, Design
+- Dashboard header has: Published toggle, View Live button, Save Changes button
+- ThemeContext provides `theme`, `toggleTheme`, `accentColor`, `setAccentColor`
+- Home page Navbar has a Sun/Moon theme toggle button
+- Dashboard currently imports `useTheme` but only uses `accentColor` / `setAccentColor` — no theme toggle in the dashboard header
+- No PDF resume download/export functionality exists
 
 ## Requested Changes (Diff)
 
 ### Add
-- `/auth` route with a dedicated Sign In / Sign Up page (two tabs, both using Internet Identity)
-- After successful login, redirect to `/dashboard`
-- Protect `/dashboard`: redirect unauthenticated users to `/auth`
-- Dashboard left fixed sidebar matching the hero image: avatar placeholder, user name, plan badge, nav items (Dashboard, Resume, Portfolio, Settings), Logout at bottom
-- Dashboard main area: top bar with page title + Save/Publish action buttons; left editor panel with resume section tabs (Personal, Experience, Education, Skills, Projects); right live preview panel (light paper-like background rendering the resume)
-- PDF upload section in the editor area (drag-and-drop or click)
+1. **Download PDF Resume** button in the dashboard header area (next to Save Changes), and/or a dedicated "Download PDF" action in the Resume section. When clicked, generates a clean, well-formatted PDF of the user's resume data (personal info, work experience, education, skills, projects) using the browser's print API or a client-side PDF library like `jsPDF` + `html2canvas`. The PDF should reflect the current resume data.
+2. **Theme toggle (Sun/Moon)** in the dashboard header — same style as the one already in the Navbar on the home page, using `toggleTheme` from `useTheme`.
 
 ### Modify
-- Navbar CTA buttons: "Sign In" navigates to `/auth` when not logged in
-- `DashboardPage.tsx`: replace current Navbar+tab layout with sidebar + two-column layout matching hero mockup
-- `App.tsx`: add `/auth` route and beforeLoad guard on `/dashboard`
+- Dashboard header: add theme toggle icon button (Sun/Moon) and Download PDF button alongside existing controls
+- Dashboard imports: add `Sun`, `Moon`, `Download` icons from lucide-react; import `toggleTheme` from `useTheme`
 
 ### Remove
-- Navbar inside DashboardPage (sidebar replaces it)
+- Nothing removed
 
 ## Implementation Plan
-1. Add `/auth` route in `App.tsx` with `beforeLoad` guard on `/dashboard` that redirects to `/auth` if no identity
-2. Create `src/frontend/src/pages/AuthPage.tsx` – Sign In / Sign Up tabs, both call `login()` from `useInternetIdentity`, show loading state, auto-redirect to `/dashboard` on success
-3. Rewrite `DashboardPage.tsx` layout:
-   - Fixed left sidebar: avatar, name, plan badge, nav links (Dashboard, Resume, Portfolio, Settings), Logout
-   - Main area: top bar with title + Save/Publish buttons
-   - Two-column: left = editor tabs (Personal, Experience, Education, Skills, Projects, PDF Import); right = live resume preview on off-white paper panel
-4. Update Navbar: Sign In button navigates to `/auth`
+1. In `DashboardPage.tsx`, destructure `theme` and `toggleTheme` from `useTheme()` (already imported).
+2. Add Sun/Moon toggle button in the dashboard `<header>` right actions area, mirroring Navbar style.
+3. Add a `Download` icon button (or labeled button) in the header that triggers PDF generation.
+4. Implement PDF generation: create a hidden/printable resume HTML element styled for print, then call `window.print()` with print-specific CSS, OR use `jsPDF` + `html2canvas` to capture a styled resume div. The simpler approach is a print-CSS-driven window.print() using a `<style media="print">` stylesheet that shows only the resume content.
+5. The resume PDF output should include: name, title, contact info, bio, work experience, education, skills, and projects — all from current state.

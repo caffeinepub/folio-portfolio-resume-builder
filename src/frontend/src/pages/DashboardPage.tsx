@@ -31,6 +31,7 @@ import {
   Briefcase,
   Camera,
   Code2,
+  Download,
   ExternalLink,
   FileText,
   FolderGit2,
@@ -39,9 +40,11 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Moon,
   Palette,
   Plus,
   Settings,
+  Sun,
   Trash2,
   Upload,
   User,
@@ -129,7 +132,7 @@ export default function DashboardPage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [activeTab, setActiveTab] = useState<EditorTab>("personal");
   const [activeSection, setActiveSection] = useState<SidebarSection>("resume");
-  const { accentColor, setAccentColor } = useTheme();
+  const { accentColor, setAccentColor, theme, toggleTheme } = useTheme();
   const [selectedTemplate, setSelectedTemplate] = useState<string>(() => {
     return localStorage.getItem("portfolio-template") || "modern";
   });
@@ -367,6 +370,151 @@ export default function DashboardPage() {
       icon: <Settings className="w-4 h-4" />,
     },
   ];
+
+  const handleDownloadPDF = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const hasWork = work.length > 0;
+    const hasEducation = education.length > 0;
+    const hasSkills = skills.length > 0;
+    const hasProjects = projects.length > 0;
+
+    const workHTML = hasWork
+      ? `<section>
+          <h2>Work Experience</h2>
+          ${work
+            .map(
+              (w) =>
+                `<div class="entry">
+            <div class="entry-header">
+              <div>
+                <span class="entry-title">${w.role || "Role"}</span>
+                <span class="entry-subtitle"> — ${w.company || "Company"}</span>
+              </div>
+              <span class="entry-dates">${w.startDate || ""}${w.endDate ? ` – ${w.endDate}` : ""}</span>
+            </div>
+            ${w.description ? `<p class="entry-desc">${w.description}</p>` : ""}
+          </div>`,
+            )
+            .join("")}
+        </section>`
+      : "";
+
+    const educationHTML = hasEducation
+      ? `<section>
+          <h2>Education</h2>
+          ${education
+            .map(
+              (e) =>
+                `<div class="entry">
+            <div class="entry-header">
+              <div>
+                <span class="entry-title">${e.degree || ""}${e.field ? ` in ${e.field}` : ""}</span>
+                <span class="entry-subtitle"> — ${e.institution || ""}</span>
+              </div>
+              <span class="entry-dates">${e.startYear || ""}${e.endYear ? ` – ${e.endYear}` : ""}</span>
+            </div>
+          </div>`,
+            )
+            .join("")}
+        </section>`
+      : "";
+
+    const skillsHTML = hasSkills
+      ? `<section>
+          <h2>Skills</h2>
+          <p class="skills-list">${skills.join(" · ")}</p>
+        </section>`
+      : "";
+
+    const projectsHTML = hasProjects
+      ? `<section>
+          <h2>Projects</h2>
+          ${projects
+            .map(
+              (p) =>
+                `<div class="entry">
+            <div class="entry-header">
+              <span class="entry-title">${p.name || "Project"}</span>
+            </div>
+            ${p.description ? `<p class="entry-desc">${p.description}</p>` : ""}
+          </div>`,
+            )
+            .join("")}
+        </section>`
+      : "";
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${personal.name || "Resume"} – Resume</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 11pt;
+      color: #1a1a1a;
+      background: #fff;
+      padding: 36px 48px;
+      max-width: 800px;
+      margin: 0 auto;
+      line-height: 1.55;
+    }
+    header { margin-bottom: 24px; border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; }
+    header h1 { font-size: 26pt; font-weight: 700; letter-spacing: -0.5px; color: #0d0d0d; }
+    header .title { font-size: 13pt; color: #444; margin-top: 4px; font-weight: 500; }
+    header .contact { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 9.5pt; color: #555; }
+    .bio { margin-bottom: 20px; color: #333; font-size: 10.5pt; line-height: 1.6; }
+    section { margin-bottom: 22px; }
+    section h2 {
+      font-size: 10.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #0d0d0d;
+      border-bottom: 1px solid #d0d0d0;
+      padding-bottom: 4px;
+      margin-bottom: 12px;
+    }
+    .entry { margin-bottom: 14px; }
+    .entry-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px; }
+    .entry-title { font-weight: 600; font-size: 10.5pt; color: #111; }
+    .entry-subtitle { font-size: 10pt; color: #444; }
+    .entry-dates { font-size: 9pt; color: #777; white-space: nowrap; }
+    .entry-desc { margin-top: 5px; font-size: 10pt; color: #444; line-height: 1.55; }
+    .skills-list { font-size: 10.5pt; color: #333; line-height: 1.8; }
+    @media print { body { padding: 20px 32px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${personal.name || "Your Name"}</h1>
+    ${personal.title ? `<div class="title">${personal.title}</div>` : ""}
+    <div class="contact">
+      ${personal.email ? `<span>${personal.email}</span>` : ""}
+      ${personal.phone ? `<span>${personal.phone}</span>` : ""}
+      ${personal.website ? `<span>${personal.website}</span>` : ""}
+    </div>
+  </header>
+  ${personal.bio ? `<div class="bio">${personal.bio}</div>` : ""}
+  ${workHTML}
+  ${educationHTML}
+  ${skillsHTML}
+  ${projectsHTML}
+</body>
+</html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    }, 600);
+  };
 
   if (isInitializing || portfolioLoading || profileLoading) {
     return (
@@ -658,6 +806,44 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Theme toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                theme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+              }
+              className="flex items-center justify-center w-8 h-8 rounded-lg transition-all hover:opacity-80"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                color: "#8FA0C6",
+              }}
+              data-ocid="dashboard.toggle"
+            >
+              {theme === "dark" ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
+            </button>
+            {/* Download PDF Resume */}
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
+              style={{
+                background: "rgba(255,255,255,0.08)",
+                color: "#EAF0FF",
+                border: "1px solid rgba(255,255,255,0.12)",
+              }}
+              data-ocid="dashboard.secondary_button"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download PDF
+            </button>
             {/* Published toggle */}
             <div className="flex items-center gap-2">
               <span
