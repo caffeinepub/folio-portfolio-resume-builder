@@ -24,14 +24,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 async function getPdfjsLib() {
   if (pdfjsLib) return pdfjsLib;
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic CDN import
   const mod: any = await import(/* @vite-ignore */ PDFJS_CDN);
   pdfjsLib = mod;
   pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
   return pdfjsLib;
 }
 
-async function extractTextFromPDF(file: File): Promise<string> {
+async function extractTextFromPDF(
+  file: File,
+  onProgress?: (current: number, total: number) => void,
+): Promise<string> {
   const lib = await getPdfjsLib();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
@@ -45,7 +47,6 @@ async function extractTextFromPDF(file: File): Promise<string> {
     const itemsByLine: Map<number, { x: number; str: string }[]> = new Map();
 
     for (const item of content.items) {
-      // biome-ignore lint/suspicious/noExplicitAny: pdfjs dynamic type
       const it = item as any;
       if (!("str" in it) || !it.str.trim()) continue;
       const y = Math.round(it.transform[5]); // round to group items on same line
@@ -68,6 +69,9 @@ async function extractTextFromPDF(file: File): Promise<string> {
       .filter((line) => line.length > 0);
 
     pageTexts.push(lines.join("\n"));
+
+    // Report progress after each page
+    onProgress?.(i, pdf.numPages);
   }
 
   return pageTexts.join("\n");
@@ -431,14 +435,20 @@ function extractProjects(lines: string[]): Project[] {
   return projects.slice(0, 8);
 }
 
-export async function parseResumeFromPDF(file: File): Promise<{
+export async function parseResumeFromPDF(
+  file: File,
+  onProgress?: (current: number, total: number) => void,
+): Promise<{
   personal: Partial<PersonalInfo>;
   work: WorkExperience[];
   education: Education[];
   skills: string[];
   projects: Project[];
 }> {
-  const rawText = await withTimeout(extractTextFromPDF(file), 8000);
+  const rawText = await withTimeout(
+    extractTextFromPDF(file, onProgress),
+    15000,
+  );
   const lines = rawText
     .split(/\n+/)
     .map((l) => l.trim())

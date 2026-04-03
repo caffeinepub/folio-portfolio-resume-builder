@@ -50,6 +50,10 @@ export default function ProfileSetupModal({
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
+  const [extractProgress, setExtractProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [parsedData, setParsedData] = useState<ParsedResumeData | null>(null);
   const [resumeFileName, setResumeFileName] = useState<string | null>(null);
   const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
@@ -64,9 +68,12 @@ export default function ProfileSetupModal({
       return;
     }
     setIsExtracting(true);
+    setExtractProgress(null);
     setResumeFileName(file.name);
     try {
-      const parsed = await parseResumeFromPDF(file);
+      const parsed = await parseResumeFromPDF(file, (current, total) => {
+        setExtractProgress({ current, total });
+      });
       setParsedData(parsed);
       if (parsed.personal.name && !displayName) {
         setDisplayName(parsed.personal.name);
@@ -84,6 +91,7 @@ export default function ProfileSetupModal({
       toast.error("Could not read resume. Please fill in details manually.");
     } finally {
       setIsExtracting(false);
+      setExtractProgress(null);
     }
   };
 
@@ -143,6 +151,10 @@ export default function ProfileSetupModal({
   };
 
   const isSubmitDisabled = isPending || isActorLoading || !actor;
+  const progressPct =
+    extractProgress && extractProgress.total > 0
+      ? Math.round((extractProgress.current / extractProgress.total) * 100)
+      : 0;
 
   return (
     <Dialog
@@ -152,10 +164,8 @@ export default function ProfileSetupModal({
       }}
     >
       <DialogContent
-        className="p-0 overflow-hidden border-0"
+        className="p-0 overflow-hidden bg-background border border-border"
         style={{
-          background: "#0B1222",
-          border: "1px solid #1B2A44",
           maxWidth: "520px",
           width: "95vw",
           borderRadius: "20px",
@@ -178,8 +188,7 @@ export default function ProfileSetupModal({
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 rounded-lg p-1.5 transition-colors hover:bg-white/10"
-            style={{ color: "#8FA0C6" }}
+            className="absolute top-4 right-4 rounded-lg p-1.5 transition-colors hover:bg-white/10 text-muted-foreground"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -195,21 +204,18 @@ export default function ProfileSetupModal({
             >
               <Zap className="w-4 h-4 text-white" />
             </div>
-            <span
-              className="font-bold text-base tracking-tight"
-              style={{ color: "#EAF0FF" }}
-            >
+            <span className="font-bold text-base tracking-tight text-foreground">
               Folio
             </span>
           </div>
 
           <h2
-            className="text-xl font-bold mb-1"
-            style={{ color: "#EAF0FF", letterSpacing: "-0.02em" }}
+            className="text-xl font-bold mb-1 text-foreground"
+            style={{ letterSpacing: "-0.02em" }}
           >
             Set Up Your Profile
           </h2>
-          <p className="text-sm" style={{ color: "#8FA0C6" }}>
+          <p className="text-sm text-muted-foreground">
             Upload your resume to auto-fill your details, or enter them
             manually.
           </p>
@@ -256,7 +262,7 @@ export default function ProfileSetupModal({
                 </div>
               )}
             </button>
-            <p className="text-xs mt-2" style={{ color: "#8FA0C6" }}>
+            <p className="text-xs mt-2 text-muted-foreground">
               {avatarDataUrl ? "Click to change photo" : "Add profile photo"}
             </p>
             <input
@@ -271,10 +277,7 @@ export default function ProfileSetupModal({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* PDF Upload zone */}
             <div>
-              <p
-                className="text-xs font-medium mb-2"
-                style={{ color: "#8FA0C6" }}
-              >
+              <p className="text-xs font-medium mb-2 text-muted-foreground">
                 AUTO-FILL FROM RESUME
               </p>
               <button
@@ -301,14 +304,33 @@ export default function ProfileSetupModal({
                   onChange={handleFileChange}
                 />
                 {isExtracting ? (
-                  <div className="flex items-center justify-center gap-2.5 py-0.5">
+                  <div className="flex flex-col items-center gap-2.5 py-1">
                     <Loader2
-                      className="w-4 h-4 animate-spin flex-shrink-0"
+                      className="w-5 h-5 animate-spin flex-shrink-0"
                       style={{ color: "#4D7CFF" }}
                     />
-                    <p className="text-sm" style={{ color: "#8FA0C6" }}>
-                      Reading resume...
+                    <p className="text-sm font-medium text-foreground">
+                      Extracting your resume...
                     </p>
+                    {/* Progress bar */}
+                    <div className="w-full space-y-1">
+                      <div className="bg-muted rounded-full h-1.5 w-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${progressPct}%`,
+                            background:
+                              "linear-gradient(90deg, #4D7CFF, #35C6FF)",
+                          }}
+                        />
+                      </div>
+                      {extractProgress && extractProgress.total > 0 && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          Processing page {extractProgress.current} of{" "}
+                          {extractProgress.total}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ) : resumeFileName ? (
                   <div className="flex items-center gap-2.5">
@@ -317,10 +339,7 @@ export default function ProfileSetupModal({
                       style={{ color: "#35C6FF" }}
                     />
                     <div className="flex-1 text-left min-w-0">
-                      <p
-                        className="text-sm font-medium truncate"
-                        style={{ color: "#EAF0FF" }}
-                      >
+                      <p className="text-sm font-medium truncate text-foreground">
                         {resumeFileName}
                       </p>
                       <p
@@ -339,8 +358,7 @@ export default function ProfileSetupModal({
                         if (fileInputRef.current)
                           fileInputRef.current.value = "";
                       }}
-                      className="p-1 rounded-md transition-colors hover:bg-white/10 flex-shrink-0"
-                      style={{ color: "#8FA0C6" }}
+                      className="p-1 rounded-md transition-colors hover:bg-white/10 flex-shrink-0 text-muted-foreground"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -357,16 +375,10 @@ export default function ProfileSetupModal({
                       />
                     </div>
                     <div className="text-left">
-                      <p
-                        className="text-sm font-semibold"
-                        style={{ color: "#EAF0FF" }}
-                      >
+                      <p className="text-sm font-semibold text-foreground">
                         Upload Resume (PDF)
                       </p>
-                      <p
-                        className="text-xs mt-0.5"
-                        style={{ color: "#8FA0C6" }}
-                      >
+                      <p className="text-xs mt-0.5 text-muted-foreground">
                         Auto-fills name, skills, work &amp; education
                       </p>
                     </div>
@@ -384,8 +396,7 @@ export default function ProfileSetupModal({
               <div className="space-y-1.5">
                 <Label
                   htmlFor="display-name"
-                  className="text-xs font-medium"
-                  style={{ color: "#8FA0C6" }}
+                  className="text-xs font-medium text-muted-foreground"
                 >
                   DISPLAY NAME *
                 </Label>
@@ -394,28 +405,19 @@ export default function ProfileSetupModal({
                   placeholder="Jane Doe"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="text-sm h-10 rounded-lg border"
-                  style={{
-                    background: "#111B30",
-                    border: "1px solid #203255",
-                    color: "#EAF0FF",
-                  }}
+                  className="text-sm h-10 rounded-lg border bg-muted border-border text-foreground"
                   data-ocid="profile_setup.input"
                 />
               </div>
               <div className="space-y-1.5">
                 <Label
                   htmlFor="username"
-                  className="text-xs font-medium"
-                  style={{ color: "#8FA0C6" }}
+                  className="text-xs font-medium text-muted-foreground"
                 >
                   USERNAME *
                 </Label>
                 <div className="relative">
-                  <span
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none select-none"
-                    style={{ color: "rgba(143,160,198,0.6)" }}
-                  >
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none select-none text-muted-foreground/60">
                     @
                   </span>
                   <Input
@@ -423,18 +425,13 @@ export default function ProfileSetupModal({
                     placeholder="janedoe"
                     value={username}
                     onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                    className="text-sm h-10 rounded-lg pl-7"
-                    style={{
-                      background: "#111B30",
-                      border: "1px solid #203255",
-                      color: "#EAF0FF",
-                    }}
+                    className="text-sm h-10 rounded-lg pl-7 bg-muted border-border text-foreground"
                     data-ocid="profile_setup.input"
                   />
                 </div>
               </div>
             </div>
-            <p className="text-xs" style={{ color: "rgba(143,160,198,0.6)" }}>
+            <p className="text-xs text-muted-foreground/60">
               Lowercase letters, numbers, hyphens and underscores only.
             </p>
 

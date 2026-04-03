@@ -30,7 +30,9 @@ import { useRouter } from "@tanstack/react-router";
 import {
   Briefcase,
   Camera,
+  CheckCircle,
   Code2,
+  Copy,
   Download,
   ExternalLink,
   FileText,
@@ -41,11 +43,11 @@ import {
   Loader2,
   LogOut,
   Moon,
-  Palette,
   Plus,
   Settings,
   Sun,
   Trash2,
+  TrendingUp,
   Upload,
   User,
   Zap,
@@ -101,8 +103,7 @@ type EditorTab =
   | "education"
   | "skills"
   | "projects"
-  | "import"
-  | "design";
+  | "import";
 type SidebarSection = "dashboard" | "resume" | "portfolio" | "settings";
 
 export default function DashboardPage() {
@@ -130,6 +131,10 @@ export default function DashboardPage() {
   const [displayName, setDisplayName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [extractProgress, setExtractProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [activeTab, setActiveTab] = useState<EditorTab>("personal");
   const [activeSection, setActiveSection] = useState<SidebarSection>("resume");
   const { accentColor, setAccentColor, theme, toggleTheme } = useTheme();
@@ -215,8 +220,11 @@ export default function DashboardPage() {
       return;
     }
     setIsExtracting(true);
+    setExtractProgress(null);
     try {
-      const parsed = await parseResumeFromPDF(file);
+      const parsed = await parseResumeFromPDF(file, (current, total) => {
+        setExtractProgress({ current, total });
+      });
       // Replace fields instead of appending to avoid duplicates on re-upload
       setPersonal((prev) => ({
         ...prev,
@@ -239,6 +247,7 @@ export default function DashboardPage() {
       toast.error("Could not parse resume. Please fill in manually.");
     } finally {
       setIsExtracting(false);
+      setExtractProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -303,11 +312,23 @@ export default function DashboardPage() {
     }
   };
 
-  const removeSkill = (skill: string) =>
-    setSkills((prev) => prev.filter((s) => s !== skill));
-
   const principalId = identity?.getPrincipal().toString();
   const isPro = portfolio?.plan === Plan.pro;
+
+  // Resume completeness calculation
+  const completenessScore = useMemo(() => {
+    const checks = [
+      !!personal.name,
+      !!personal.title,
+      !!personal.email,
+      !!personal.bio,
+      work.length > 0,
+      education.length > 0,
+      skills.length > 0,
+      projects.length > 0,
+    ];
+    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  }, [personal, work, education, skills, projects]);
 
   const editorTabs: { id: EditorTab; label: string; icon: React.ReactNode }[] =
     [
@@ -340,11 +361,6 @@ export default function DashboardPage() {
         id: "import",
         label: "Import PDF",
         icon: <Upload className="w-3.5 h-3.5" />,
-      },
-      {
-        id: "design",
-        label: "Design",
-        icon: <Palette className="w-3.5 h-3.5" />,
       },
     ];
 
@@ -463,7 +479,7 @@ export default function DashboardPage() {
       margin: 0 auto;
       line-height: 1.55;
     }
-    header { margin-bottom: 24px; border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; }
+    header { margin-bottom: 24px; border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; overflow: hidden; }
     header h1 { font-size: 26pt; font-weight: 700; letter-spacing: -0.5px; color: #0d0d0d; }
     header .title { font-size: 13pt; color: #444; margin-top: 4px; font-weight: 500; }
     header .contact { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 9.5pt; color: #555; }
@@ -491,6 +507,7 @@ export default function DashboardPage() {
 </head>
 <body>
   <header>
+    ${avatarUrl ? `<img src="${avatarUrl}" style="float:right; width:72px; height:72px; border-radius:50%; object-fit:cover; margin-left:16px; margin-top:4px;" />` : ""}
     <h1>${personal.name || "Your Name"}</h1>
     ${personal.title ? `<div class="title">${personal.title}</div>` : ""}
     <div class="contact">
@@ -519,8 +536,7 @@ export default function DashboardPage() {
   if (isInitializing || portfolioLoading || profileLoading) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: "#070A12" }}
+        className="min-h-screen flex items-center justify-center bg-background"
         data-ocid="dashboard.loading_state"
       >
         <div className="text-center">
@@ -528,17 +544,14 @@ export default function DashboardPage() {
             className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin mx-auto mb-4"
             style={{ borderColor: "#4D7CFF", borderTopColor: "transparent" }}
           />
-          <p style={{ color: "#8FA0C6" }}>Loading your portfolio...</p>
+          <p className="text-muted-foreground">Loading your portfolio...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ background: "#070A12" }}
-    >
+    <div className="flex h-screen overflow-hidden bg-background">
       <ProfileSetupModal
         open={showProfileSetup}
         onComplete={(
@@ -580,15 +593,9 @@ export default function DashboardPage() {
       />
 
       {/* Fixed Left Sidebar */}
-      <aside
-        className="w-64 flex flex-col fixed left-0 top-0 h-full z-20"
-        style={{ background: "#0B1222", borderRight: "1px solid #1B2A44" }}
-      >
+      <aside className="w-64 flex flex-col fixed left-0 top-0 h-full z-20 bg-card border-r border-border">
         {/* Top: Logo + Brand */}
-        <div
-          className="px-5 py-5"
-          style={{ borderBottom: "1px solid #1B2A44" }}
-        >
+        <div className="px-5 py-5 border-b border-border">
           <div className="flex items-center gap-2.5 mb-5">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -598,10 +605,7 @@ export default function DashboardPage() {
             >
               <Zap className="w-4 h-4 text-white" />
             </div>
-            <span
-              className="font-display font-bold text-lg"
-              style={{ color: "#EAF0FF" }}
-            >
+            <span className="font-display font-bold text-lg text-foreground">
               Folio
             </span>
           </div>
@@ -657,10 +661,7 @@ export default function DashboardPage() {
               />
             </div>
             <div className="min-w-0">
-              <p
-                className="font-semibold text-sm truncate"
-                style={{ color: "#EAF0FF" }}
-              >
+              <p className="font-semibold text-sm truncate text-foreground">
                 {displayName || personal.name || "Your Name"}
               </p>
               <span
@@ -695,16 +696,8 @@ export default function DashboardPage() {
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  if (
-                    item.id === "portfolio" &&
-                    portfolio?.isPublished &&
-                    principalId
-                  ) {
-                    router.navigate({ to: `/portfolio/${principalId}` });
-                  } else {
-                    setActiveSection(item.id);
-                    if (item.id === "resume") setActiveTab("personal");
-                  }
+                  setActiveSection(item.id);
+                  if (item.id === "resume") setActiveTab("personal");
                 }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
                 style={
@@ -721,12 +714,6 @@ export default function DashboardPage() {
               >
                 {item.icon}
                 {item.label}
-                {item.id === "portfolio" && portfolio?.isPublished && (
-                  <ExternalLink
-                    className="w-3 h-3 ml-auto"
-                    style={{ color: "#35C6FF" }}
-                  />
-                )}
               </button>
             );
           })}
@@ -759,18 +746,14 @@ export default function DashboardPage() {
         )}
 
         {/* Bottom: Logout */}
-        <div
-          className="px-3 pb-4"
-          style={{ borderTop: "1px solid #1B2A44", paddingTop: "12px" }}
-        >
+        <div className="px-3 pb-4 pt-3 border-t border-border">
           <button
             type="button"
             onClick={() => {
               clear();
               router.navigate({ to: "/" });
             }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 hover:opacity-80"
-            style={{ color: "#8FA0C6" }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 hover:opacity-80 text-muted-foreground"
             data-ocid="sidebar.logout.button"
           >
             <LogOut className="w-4 h-4" />
@@ -782,15 +765,9 @@ export default function DashboardPage() {
       {/* Main area */}
       <div className="flex-1 ml-64 flex flex-col h-screen overflow-hidden">
         {/* Top Bar */}
-        <header
-          className="flex items-center justify-between px-8 py-4 flex-shrink-0"
-          style={{ borderBottom: "1px solid #1B2A44", background: "#0B1020" }}
-        >
+        <header className="flex items-center justify-between px-8 py-4 flex-shrink-0 border-b border-border bg-card">
           <div>
-            <h1
-              className="font-display text-xl font-bold"
-              style={{ color: "#EAF0FF" }}
-            >
+            <h1 className="font-display text-xl font-bold text-foreground">
               {activeSection === "dashboard"
                 ? "Dashboard"
                 : activeSection === "resume"
@@ -799,10 +776,14 @@ export default function DashboardPage() {
                     ? "Portfolio"
                     : "Settings"}
             </h1>
-            <p className="text-xs mt-0.5" style={{ color: "#8FA0C6" }}>
+            <p className="text-xs mt-0.5 text-muted-foreground">
               {activeSection === "resume"
                 ? "Edit your resume — changes reflect live in the preview"
-                : "Manage your professional presence"}
+                : activeSection === "dashboard"
+                  ? `Welcome back, ${displayName || personal.name || "there"}!`
+                  : activeSection === "settings"
+                    ? "Manage your account and preferences"
+                    : "Manage your professional presence"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -815,12 +796,7 @@ export default function DashboardPage() {
                   ? "Switch to light mode"
                   : "Switch to dark mode"
               }
-              className="flex items-center justify-center w-8 h-8 rounded-lg transition-all hover:opacity-80"
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                color: "#8FA0C6",
-              }}
+              className="flex items-center justify-center w-8 h-8 rounded-lg transition-all hover:opacity-80 bg-muted border border-border text-muted-foreground"
               data-ocid="dashboard.toggle"
             >
               {theme === "dark" ? (
@@ -829,27 +805,20 @@ export default function DashboardPage() {
                 <Moon className="w-4 h-4" />
               )}
             </button>
-            {/* Download PDF Resume */}
-            <button
-              type="button"
-              onClick={handleDownloadPDF}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                color: "#EAF0FF",
-                border: "1px solid rgba(255,255,255,0.12)",
-              }}
-              data-ocid="dashboard.secondary_button"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download PDF
-            </button>
+            {activeSection === "resume" && (
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:opacity-80 bg-muted text-foreground border border-border"
+                data-ocid="dashboard.secondary_button"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download PDF
+              </button>
+            )}
             {/* Published toggle */}
             <div className="flex items-center gap-2">
-              <span
-                className="text-xs font-medium"
-                style={{ color: "#8FA0C6" }}
-              >
+              <span className="text-xs font-medium text-muted-foreground">
                 Published
               </span>
               <Switch
@@ -901,1016 +870,1672 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* Content: two columns */}
-        <div className="flex-1 overflow-hidden flex gap-0">
-          {/* LEFT: Editor area */}
-          <div
-            className="flex flex-col overflow-hidden"
-            style={{ width: "55%", borderRight: "1px solid #1B2A44" }}
-          >
-            {/* Tab bar */}
+        {/* ── Dashboard Overview ── */}
+        {activeSection === "dashboard" && (
+          <DashboardOverviewPanel
+            displayName={displayName || personal.name}
+            completenessScore={completenessScore}
+            isPublished={portfolio?.isPublished ?? false}
+            credits={Number(portfolio?.credits ?? 0)}
+            isPro={isPro}
+            onEditResume={() => {
+              setActiveSection("resume");
+              setActiveTab("personal");
+            }}
+            onViewPortfolio={() => {
+              if (portfolio?.isPublished && principalId) {
+                router.navigate({ to: `/portfolio/${principalId}` });
+              } else {
+                toast.info("Publish your portfolio first to view it live.");
+              }
+            }}
+          />
+        )}
+
+        {/* ── Settings Panel ── */}
+        {activeSection === "settings" && (
+          <SettingsPanel
+            displayName={displayName || personal.name}
+            username={username}
+            principalId={principalId ?? ""}
+            isPro={isPro}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            accentColor={accentColor}
+            setAccentColor={setAccentColor}
+            onLogout={() => {
+              clear();
+              router.navigate({ to: "/" });
+            }}
+          />
+        )}
+
+        {/* ── Resume Editor ── */}
+        {activeSection === "resume" && (
+          <div className="flex-1 overflow-hidden flex gap-0">
+            {/* LEFT: Editor area */}
             <div
-              className="flex items-center gap-1 px-4 py-3 flex-shrink-0 overflow-x-auto"
-              style={{
-                borderBottom: "1px solid #1B2A44",
-                background: "#0E1628",
-              }}
+              className="flex flex-col overflow-hidden border-r border-border"
+              style={{ width: "55%" }}
             >
-              {editorTabs.map((tab) => {
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveTab(tab.id);
-                      setActiveSection("resume");
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150"
-                    style={
-                      isActive
-                        ? {
-                            background:
-                              "linear-gradient(135deg, #4D7CFF, #35C6FF)",
-                            color: "white",
-                          }
-                        : { color: "#8FA0C6", background: "transparent" }
-                    }
-                    data-ocid="dashboard.tab"
+              {/* Tab bar */}
+              <div className="flex items-center gap-1 px-4 py-3 flex-shrink-0 overflow-x-auto border-b border-border bg-card">
+                {editorTabs.map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setActiveSection("resume");
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150"
+                      style={
+                        isActive
+                          ? {
+                              background:
+                                "linear-gradient(135deg, #4D7CFF, #35C6FF)",
+                              color: "white",
+                            }
+                          : { color: "#8FA0C6", background: "transparent" }
+                      }
+                      data-ocid="dashboard.tab"
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Editor content */}
+              <div className="flex-1 overflow-y-auto p-5 bg-background">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
                   >
-                    {tab.icon}
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Editor content */}
-            <div
-              className="flex-1 overflow-y-auto p-5"
-              style={{ background: "#070A12" }}
-            >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {/* Personal Info */}
-                  {activeTab === "personal" && (
-                    <div className="space-y-4">
-                      <SectionCard title="Personal Information">
-                        <div className="grid grid-cols-2 gap-3">
-                          <FieldGroup label="Display Name">
-                            <DarkInput
-                              value={displayName}
-                              onChange={(e) => setDisplayName(e.target.value)}
-                              placeholder="Jane Doe"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Username">
-                            <DarkInput
-                              value={username}
-                              onChange={(e) =>
-                                setUsername(e.target.value.toLowerCase())
-                              }
-                              placeholder="janedoe"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Full Name">
-                            <DarkInput
-                              value={personal.name}
-                              onChange={(e) =>
-                                setPersonal((p) => ({
-                                  ...p,
-                                  name: e.target.value,
-                                }))
-                              }
-                              placeholder="Jane Doe"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Professional Title">
-                            <DarkInput
-                              value={personal.title}
-                              onChange={(e) =>
-                                setPersonal((p) => ({
-                                  ...p,
-                                  title: e.target.value,
-                                }))
-                              }
-                              placeholder="Senior Engineer"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Email">
-                            <DarkInput
-                              type="email"
-                              value={personal.email}
-                              onChange={(e) =>
-                                setPersonal((p) => ({
-                                  ...p,
-                                  email: e.target.value,
-                                }))
-                              }
-                              placeholder="jane@example.com"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Phone">
-                            <DarkInput
-                              value={personal.phone}
-                              onChange={(e) =>
-                                setPersonal((p) => ({
-                                  ...p,
-                                  phone: e.target.value,
-                                }))
-                              }
-                              placeholder="+1 (555) 000-0000"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Website" className="col-span-2">
-                            <DarkInput
-                              value={personal.website}
-                              onChange={(e) =>
-                                setPersonal((p) => ({
-                                  ...p,
-                                  website: e.target.value,
-                                }))
-                              }
-                              placeholder="https://yourwebsite.com"
-                              ocid="personal.input"
-                            />
-                          </FieldGroup>
-                          <FieldGroup label="Bio" className="col-span-2">
-                            <DarkTextarea
-                              value={personal.bio}
-                              onChange={(e) =>
-                                setPersonal((p) => ({
-                                  ...p,
-                                  bio: e.target.value,
-                                }))
-                              }
-                              placeholder="Write a short professional bio..."
-                              ocid="personal.textarea"
-                            />
-                          </FieldGroup>
-                        </div>
-                      </SectionCard>
-                    </div>
-                  )}
-
-                  {/* Work Experience */}
-                  {activeTab === "work" && (
-                    <div className="space-y-4">
-                      {work.length === 0 && (
-                        <EmptyState
-                          icon={<Briefcase className="w-8 h-8" />}
-                          message="No work experience added yet."
-                          ocid="work.empty_state"
-                        />
-                      )}
-                      {work.map((job, i) => (
-                        <SectionCard
-                          key={`work-${job.company}-${i}`}
-                          title={job.company || `Experience ${i + 1}`}
-                          onDelete={() =>
-                            setWork((w) => w.filter((_, idx) => idx !== i))
-                          }
-                          deleteOcid={`work.delete_button.${i + 1}`}
-                          ocid={`work.item.${i + 1}`}
-                        >
+                    {/* Personal Info */}
+                    {activeTab === "personal" && (
+                      <div className="space-y-4">
+                        <SectionCard title="Personal Information">
                           <div className="grid grid-cols-2 gap-3">
-                            <FieldGroup label="Company">
+                            <FieldGroup label="Display Name">
                               <DarkInput
-                                value={job.company}
-                                onChange={(e) =>
-                                  setWork((w) =>
-                                    w.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, company: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                ocid="work.input"
+                                value={displayName}
+                                onChange={(e) => setDisplayName(e.target.value)}
+                                placeholder="Jane Doe"
+                                ocid="personal.input"
                               />
                             </FieldGroup>
-                            <FieldGroup label="Role">
+                            <FieldGroup label="Username">
                               <DarkInput
-                                value={job.role}
+                                value={username}
                                 onChange={(e) =>
-                                  setWork((w) =>
-                                    w.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, role: e.target.value }
-                                        : x,
-                                    ),
-                                  )
+                                  setUsername(e.target.value.toLowerCase())
                                 }
-                                ocid="work.input"
+                                placeholder="janedoe"
+                                ocid="personal.input"
                               />
                             </FieldGroup>
-                            <FieldGroup label="Start Date">
+                            <FieldGroup label="Full Name">
                               <DarkInput
-                                value={job.startDate}
+                                value={personal.name}
                                 onChange={(e) =>
-                                  setWork((w) =>
-                                    w.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, startDate: e.target.value }
-                                        : x,
-                                    ),
-                                  )
+                                  setPersonal((p) => ({
+                                    ...p,
+                                    name: e.target.value,
+                                  }))
                                 }
-                                placeholder="Jan 2022"
-                                ocid="work.input"
+                                placeholder="Jane Doe"
+                                ocid="personal.input"
                               />
                             </FieldGroup>
-                            <FieldGroup label="End Date">
+                            <FieldGroup label="Professional Title">
                               <DarkInput
-                                value={job.endDate}
+                                value={personal.title}
                                 onChange={(e) =>
-                                  setWork((w) =>
-                                    w.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, endDate: e.target.value }
-                                        : x,
-                                    ),
-                                  )
+                                  setPersonal((p) => ({
+                                    ...p,
+                                    title: e.target.value,
+                                  }))
                                 }
-                                placeholder="Present"
-                                ocid="work.input"
+                                placeholder="Senior Engineer"
+                                ocid="personal.input"
                               />
                             </FieldGroup>
-                            <FieldGroup
-                              label="Description"
-                              className="col-span-2"
-                            >
+                            <FieldGroup label="Email">
+                              <DarkInput
+                                type="email"
+                                value={personal.email}
+                                onChange={(e) =>
+                                  setPersonal((p) => ({
+                                    ...p,
+                                    email: e.target.value,
+                                  }))
+                                }
+                                placeholder="jane@example.com"
+                                ocid="personal.input"
+                              />
+                            </FieldGroup>
+                            <FieldGroup label="Phone">
+                              <DarkInput
+                                value={personal.phone}
+                                onChange={(e) =>
+                                  setPersonal((p) => ({
+                                    ...p,
+                                    phone: e.target.value,
+                                  }))
+                                }
+                                placeholder="+1 (555) 000-0000"
+                                ocid="personal.input"
+                              />
+                            </FieldGroup>
+                            <FieldGroup label="Website" className="col-span-2">
+                              <DarkInput
+                                value={personal.website}
+                                onChange={(e) =>
+                                  setPersonal((p) => ({
+                                    ...p,
+                                    website: e.target.value,
+                                  }))
+                                }
+                                placeholder="https://yourwebsite.com"
+                                ocid="personal.input"
+                              />
+                            </FieldGroup>
+                            <FieldGroup label="Bio" className="col-span-2">
                               <DarkTextarea
-                                value={job.description}
+                                value={personal.bio}
                                 onChange={(e) =>
-                                  setWork((w) =>
-                                    w.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, description: e.target.value }
-                                        : x,
-                                    ),
-                                  )
+                                  setPersonal((p) => ({
+                                    ...p,
+                                    bio: e.target.value,
+                                  }))
                                 }
-                                ocid="work.textarea"
+                                placeholder="Write a short professional bio..."
+                                ocid="personal.textarea"
                               />
                             </FieldGroup>
                           </div>
                         </SectionCard>
-                      ))}
-                      <AddButton
-                        onClick={() => setWork((w) => [...w, { ...emptyWork }])}
-                        label="Add Work Experience"
-                        ocid="work.secondary_button"
-                      />
-                    </div>
-                  )}
+                      </div>
+                    )}
 
-                  {/* Education */}
-                  {activeTab === "education" && (
-                    <div className="space-y-4">
-                      {education.length === 0 && (
-                        <EmptyState
-                          icon={<GraduationCap className="w-8 h-8" />}
-                          message="No education added yet."
-                          ocid="education.empty_state"
-                        />
-                      )}
-                      {education.map((edu, i) => (
-                        <SectionCard
-                          key={`edu-${edu.institution}-${i}`}
-                          title={edu.institution || `Education ${i + 1}`}
-                          onDelete={() =>
-                            setEducation((ed) =>
-                              ed.filter((_, idx) => idx !== i),
-                            )
-                          }
-                          deleteOcid={`education.delete_button.${i + 1}`}
-                          ocid={`education.item.${i + 1}`}
-                        >
-                          <div className="grid grid-cols-2 gap-3">
-                            <FieldGroup label="Institution">
-                              <DarkInput
-                                value={edu.institution}
-                                onChange={(e) =>
-                                  setEducation((ed) =>
-                                    ed.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, institution: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                ocid="education.input"
-                              />
-                            </FieldGroup>
-                            <FieldGroup label="Degree">
-                              <DarkInput
-                                value={edu.degree}
-                                onChange={(e) =>
-                                  setEducation((ed) =>
-                                    ed.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, degree: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                ocid="education.input"
-                              />
-                            </FieldGroup>
-                            <FieldGroup label="Field of Study">
-                              <DarkInput
-                                value={edu.field}
-                                onChange={(e) =>
-                                  setEducation((ed) =>
-                                    ed.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, field: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                ocid="education.input"
-                              />
-                            </FieldGroup>
-                            <div className="grid grid-cols-2 gap-2">
-                              <FieldGroup label="Start Year">
+                    {/* Work Experience */}
+                    {activeTab === "work" && (
+                      <div className="space-y-4">
+                        {work.length === 0 && (
+                          <EmptyState
+                            icon={<Briefcase className="w-8 h-8" />}
+                            message="No work experience added yet."
+                            ocid="work.empty_state"
+                          />
+                        )}
+                        {work.map((job, i) => (
+                          <SectionCard
+                            key={`work-${job.company}-${i}`}
+                            title={job.company || `Experience ${i + 1}`}
+                            onDelete={() =>
+                              setWork((w) => w.filter((_, idx) => idx !== i))
+                            }
+                            deleteOcid={`work.delete_button.${i + 1}`}
+                            ocid={`work.item.${i + 1}`}
+                          >
+                            <div className="grid grid-cols-2 gap-3">
+                              <FieldGroup label="Company">
                                 <DarkInput
-                                  value={edu.startYear}
+                                  value={job.company}
                                   onChange={(e) =>
-                                    setEducation((ed) =>
-                                      ed.map((x, idx) =>
+                                    setWork((w) =>
+                                      w.map((x, idx) =>
                                         idx === i
-                                          ? { ...x, startYear: e.target.value }
+                                          ? { ...x, company: e.target.value }
                                           : x,
                                       ),
                                     )
                                   }
-                                  placeholder="2018"
-                                  ocid="education.input"
+                                  ocid="work.input"
                                 />
                               </FieldGroup>
-                              <FieldGroup label="End Year">
+                              <FieldGroup label="Role">
                                 <DarkInput
-                                  value={edu.endYear}
+                                  value={job.role}
                                   onChange={(e) =>
-                                    setEducation((ed) =>
-                                      ed.map((x, idx) =>
+                                    setWork((w) =>
+                                      w.map((x, idx) =>
                                         idx === i
-                                          ? { ...x, endYear: e.target.value }
+                                          ? { ...x, role: e.target.value }
                                           : x,
                                       ),
                                     )
                                   }
-                                  placeholder="2022"
-                                  ocid="education.input"
+                                  ocid="work.input"
+                                />
+                              </FieldGroup>
+                              <FieldGroup label="Start Date">
+                                <DarkInput
+                                  value={job.startDate}
+                                  onChange={(e) =>
+                                    setWork((w) =>
+                                      w.map((x, idx) =>
+                                        idx === i
+                                          ? {
+                                              ...x,
+                                              startDate: e.target.value,
+                                            }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  placeholder="Jan 2022"
+                                  ocid="work.input"
+                                />
+                              </FieldGroup>
+                              <FieldGroup label="End Date">
+                                <DarkInput
+                                  value={job.endDate}
+                                  onChange={(e) =>
+                                    setWork((w) =>
+                                      w.map((x, idx) =>
+                                        idx === i
+                                          ? { ...x, endDate: e.target.value }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  placeholder="Present"
+                                  ocid="work.input"
+                                />
+                              </FieldGroup>
+                              <FieldGroup
+                                label="Description"
+                                className="col-span-2"
+                              >
+                                <DarkTextarea
+                                  value={job.description}
+                                  onChange={(e) =>
+                                    setWork((w) =>
+                                      w.map((x, idx) =>
+                                        idx === i
+                                          ? {
+                                              ...x,
+                                              description: e.target.value,
+                                            }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  ocid="work.textarea"
                                 />
                               </FieldGroup>
                             </div>
-                          </div>
-                        </SectionCard>
-                      ))}
-                      <AddButton
-                        onClick={() =>
-                          setEducation((ed) => [...ed, { ...emptyEdu }])
-                        }
-                        label="Add Education"
-                        ocid="education.secondary_button"
-                      />
-                    </div>
-                  )}
-
-                  {/* Skills */}
-                  {activeTab === "skills" && (
-                    <SectionCard title="Skills">
-                      <div className="flex gap-2 mb-4">
-                        <Input
-                          value={skillInput}
-                          onChange={(e) => setSkillInput(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && addSkill()}
-                          placeholder="e.g. React, TypeScript, Node.js"
-                          className="flex-1 text-sm h-9"
-                          style={{
-                            background: "#111B30",
-                            border: "1px solid #203255",
-                            color: "#EAF0FF",
-                          }}
-                          data-ocid="skills.input"
+                          </SectionCard>
+                        ))}
+                        <AddButton
+                          onClick={() =>
+                            setWork((w) => [...w, { ...emptyWork }])
+                          }
+                          label="Add Work Experience"
+                          ocid="work.secondary_button"
                         />
-                        <button
-                          type="button"
-                          onClick={addSkill}
-                          className="px-3 py-2 rounded-lg text-sm font-medium"
-                          style={{
-                            background:
-                              "linear-gradient(135deg, #4D7CFF, #35C6FF)",
-                            color: "white",
-                          }}
-                          data-ocid="skills.secondary_button"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
                       </div>
-                      {skills.length === 0 ? (
-                        <div
-                          className="text-center py-6"
-                          style={{ color: "#8FA0C6" }}
-                          data-ocid="skills.empty_state"
-                        >
-                          <Code2 className="w-7 h-7 mx-auto mb-2" />
-                          <p className="text-sm">
-                            No skills yet. Add some above.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {skills.map((skill, i) => (
-                            <button
-                              key={skill}
-                              type="button"
-                              onClick={() => removeSkill(skill)}
-                              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium transition-all hover:opacity-70"
-                              style={{
-                                background: "rgba(77,124,255,0.15)",
-                                color: "#4D7CFF",
-                                border: "1px solid rgba(77,124,255,0.3)",
-                              }}
-                              data-ocid={`skills.item.${i + 1}`}
-                            >
-                              {skill} <span className="opacity-60">×</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </SectionCard>
-                  )}
+                    )}
 
-                  {/* Projects */}
-                  {activeTab === "projects" && (
-                    <div className="space-y-4">
-                      {projects.length === 0 && (
-                        <EmptyState
-                          icon={<FolderGit2 className="w-8 h-8" />}
-                          message="No projects added yet."
-                          ocid="projects.empty_state"
-                        />
-                      )}
-                      {projects.map((proj, i) => (
-                        <SectionCard
-                          key={`proj-${proj.name}-${i}`}
-                          title={proj.name || `Project ${i + 1}`}
-                          onDelete={() =>
-                            setProjects((p) => p.filter((_, idx) => idx !== i))
-                          }
-                          deleteOcid={`projects.delete_button.${i + 1}`}
-                          ocid={`projects.item.${i + 1}`}
-                        >
-                          <div className="space-y-3">
-                            <FieldGroup label="Project Name">
-                              <DarkInput
-                                value={proj.name}
-                                onChange={(e) =>
-                                  setProjects((p) =>
-                                    p.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, name: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                ocid="projects.input"
-                              />
-                            </FieldGroup>
-                            <FieldGroup label="URL">
-                              <DarkInput
-                                value={proj.url}
-                                onChange={(e) =>
-                                  setProjects((p) =>
-                                    p.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, url: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                placeholder="https://github.com/..."
-                                ocid="projects.input"
-                              />
-                            </FieldGroup>
-                            <FieldGroup label="Description">
-                              <DarkTextarea
-                                value={proj.description}
-                                onChange={(e) =>
-                                  setProjects((p) =>
-                                    p.map((x, idx) =>
-                                      idx === i
-                                        ? { ...x, description: e.target.value }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                                ocid="projects.textarea"
-                              />
-                            </FieldGroup>
-                          </div>
-                        </SectionCard>
-                      ))}
-                      <AddButton
-                        onClick={() =>
-                          setProjects((p) => [...p, { ...emptyProject }])
-                        }
-                        label="Add Project"
-                        ocid="projects.secondary_button"
-                      />
-                    </div>
-                  )}
-
-                  {/* Import PDF */}
-                  {activeTab === "import" && (
-                    <div className="space-y-4">
-                      <SectionCard title="Import from PDF">
-                        <p
-                          className="text-sm mb-4"
-                          style={{ color: "#8FA0C6" }}
-                        >
-                          Upload your existing resume PDF and we'll auto-extract
-                          your details.
-                        </p>
-                        <input
-                          ref={fileInputRef}
-                          id="resume-pdf-input"
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          className="sr-only"
-                          onChange={handleFileInputChange}
-                        />
-                        <label
-                          htmlFor={
-                            isExtracting ? undefined : "resume-pdf-input"
-                          }
-                          onDragOver={handleDragOver}
-                          onDragLeave={handleDragLeave}
-                          onDrop={handleDrop}
-                          data-ocid="resume.dropzone"
-                          className="flex flex-col items-center justify-center gap-3 p-10 rounded-xl cursor-pointer transition-all duration-200"
-                          style={{
-                            border: `2px dashed ${isDragging ? "#4D7CFF" : "#203255"}`,
-                            background: isDragging
-                              ? "rgba(77,124,255,0.05)"
-                              : "#111B30",
-                          }}
-                        >
-                          <AnimatePresence mode="wait">
-                            {isExtracting ? (
-                              <motion.div
-                                key="extracting"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex flex-col items-center gap-3"
-                                data-ocid="resume.loading_state"
-                              >
-                                <Loader2
-                                  className="w-8 h-8 animate-spin"
-                                  style={{ color: "#4D7CFF" }}
+                    {/* Education */}
+                    {activeTab === "education" && (
+                      <div className="space-y-4">
+                        {education.length === 0 && (
+                          <EmptyState
+                            icon={<GraduationCap className="w-8 h-8" />}
+                            message="No education added yet."
+                            ocid="education.empty_state"
+                          />
+                        )}
+                        {education.map((edu, i) => (
+                          <SectionCard
+                            key={`edu-${edu.institution}-${i}`}
+                            title={edu.institution || `Education ${i + 1}`}
+                            onDelete={() =>
+                              setEducation((ed) =>
+                                ed.filter((_, idx) => idx !== i),
+                              )
+                            }
+                            deleteOcid={`education.delete_button.${i + 1}`}
+                            ocid={`education.item.${i + 1}`}
+                          >
+                            <div className="grid grid-cols-2 gap-3">
+                              <FieldGroup label="Institution">
+                                <DarkInput
+                                  value={edu.institution}
+                                  onChange={(e) =>
+                                    setEducation((ed) =>
+                                      ed.map((x, idx) =>
+                                        idx === i
+                                          ? {
+                                              ...x,
+                                              institution: e.target.value,
+                                            }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  ocid="education.input"
                                 />
-                                <p
-                                  className="text-sm font-medium"
-                                  style={{ color: "#EAF0FF" }}
-                                >
-                                  Extracting your resume...
-                                </p>
-                                <p
-                                  className="text-xs"
-                                  style={{ color: "#8FA0C6" }}
-                                >
-                                  Parsing resume data, please wait
-                                </p>
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key="idle"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex flex-col items-center gap-3"
+                              </FieldGroup>
+                              <FieldGroup label="Degree">
+                                <DarkInput
+                                  value={edu.degree}
+                                  onChange={(e) =>
+                                    setEducation((ed) =>
+                                      ed.map((x, idx) =>
+                                        idx === i
+                                          ? { ...x, degree: e.target.value }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  ocid="education.input"
+                                />
+                              </FieldGroup>
+                              <FieldGroup label="Field of Study">
+                                <DarkInput
+                                  value={edu.field}
+                                  onChange={(e) =>
+                                    setEducation((ed) =>
+                                      ed.map((x, idx) =>
+                                        idx === i
+                                          ? { ...x, field: e.target.value }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  ocid="education.input"
+                                />
+                              </FieldGroup>
+                              <div className="grid grid-cols-2 gap-2">
+                                <FieldGroup label="Start Year">
+                                  <DarkInput
+                                    value={edu.startYear}
+                                    onChange={(e) =>
+                                      setEducation((ed) =>
+                                        ed.map((x, idx) =>
+                                          idx === i
+                                            ? {
+                                                ...x,
+                                                startYear: e.target.value,
+                                              }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                    placeholder="2018"
+                                    ocid="education.input"
+                                  />
+                                </FieldGroup>
+                                <FieldGroup label="End Year">
+                                  <DarkInput
+                                    value={edu.endYear}
+                                    onChange={(e) =>
+                                      setEducation((ed) =>
+                                        ed.map((x, idx) =>
+                                          idx === i
+                                            ? {
+                                                ...x,
+                                                endYear: e.target.value,
+                                              }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                    placeholder="2022"
+                                    ocid="education.input"
+                                  />
+                                </FieldGroup>
+                              </div>
+                            </div>
+                          </SectionCard>
+                        ))}
+                        <AddButton
+                          onClick={() =>
+                            setEducation((ed) => [...ed, { ...emptyEdu }])
+                          }
+                          label="Add Education"
+                          ocid="education.secondary_button"
+                        />
+                      </div>
+                    )}
+
+                    {/* Skills */}
+                    {activeTab === "skills" && (
+                      <SectionCard title="Skills">
+                        <div className="flex gap-2 mb-4">
+                          <Input
+                            value={skillInput}
+                            onChange={(e) => setSkillInput(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && addSkill()}
+                            placeholder="e.g. React, TypeScript, Node.js"
+                            className="flex-1 text-sm h-9 bg-muted border-border text-foreground"
+                            data-ocid="skills.input"
+                          />
+                          <button
+                            type="button"
+                            onClick={addSkill}
+                            className="px-3 py-2 rounded-lg text-sm font-medium"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #4D7CFF, #35C6FF)",
+                              color: "white",
+                            }}
+                            data-ocid="skills.secondary_button"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {skills.length === 0 ? (
+                          <div
+                            className="text-center py-6 text-muted-foreground"
+                            data-ocid="skills.empty_state"
+                          >
+                            <Code2 className="w-7 h-7 mx-auto mb-2" />
+                            <p className="text-sm">
+                              No skills yet. Add some above.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {skills.map((skill, i) => (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium transition-all hover:opacity-70"
+                                style={{
+                                  background: "rgba(77,124,255,0.15)",
+                                  color: "#4D7CFF",
+                                  border: "1px solid rgba(77,124,255,0.3)",
+                                }}
+                                data-ocid={`skills.item.${i + 1}`}
                               >
-                                <div
-                                  className="w-12 h-12 rounded-xl flex items-center justify-center"
-                                  style={{
-                                    background: "rgba(77,124,255,0.15)",
-                                  }}
+                                {skill} <span className="opacity-60">×</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </SectionCard>
+                    )}
+
+                    {/* Projects */}
+                    {activeTab === "projects" && (
+                      <div className="space-y-4">
+                        {projects.length === 0 && (
+                          <EmptyState
+                            icon={<FolderGit2 className="w-8 h-8" />}
+                            message="No projects added yet."
+                            ocid="projects.empty_state"
+                          />
+                        )}
+                        {projects.map((proj, i) => (
+                          <SectionCard
+                            key={`proj-${proj.name}-${i}`}
+                            title={proj.name || `Project ${i + 1}`}
+                            onDelete={() =>
+                              setProjects((p) =>
+                                p.filter((_, idx) => idx !== i),
+                              )
+                            }
+                            deleteOcid={`projects.delete_button.${i + 1}`}
+                            ocid={`projects.item.${i + 1}`}
+                          >
+                            <div className="space-y-3">
+                              <FieldGroup label="Project Name">
+                                <DarkInput
+                                  value={proj.name}
+                                  onChange={(e) =>
+                                    setProjects((p) =>
+                                      p.map((x, idx) =>
+                                        idx === i
+                                          ? { ...x, name: e.target.value }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  ocid="projects.input"
+                                />
+                              </FieldGroup>
+                              <FieldGroup label="URL">
+                                <DarkInput
+                                  value={proj.url}
+                                  onChange={(e) =>
+                                    setProjects((p) =>
+                                      p.map((x, idx) =>
+                                        idx === i
+                                          ? { ...x, url: e.target.value }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  placeholder="https://github.com/..."
+                                  ocid="projects.input"
+                                />
+                              </FieldGroup>
+                              <FieldGroup label="Description">
+                                <DarkTextarea
+                                  value={proj.description}
+                                  onChange={(e) =>
+                                    setProjects((p) =>
+                                      p.map((x, idx) =>
+                                        idx === i
+                                          ? {
+                                              ...x,
+                                              description: e.target.value,
+                                            }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                  ocid="projects.textarea"
+                                />
+                              </FieldGroup>
+                            </div>
+                          </SectionCard>
+                        ))}
+                        <AddButton
+                          onClick={() =>
+                            setProjects((p) => [...p, { ...emptyProject }])
+                          }
+                          label="Add Project"
+                          ocid="projects.secondary_button"
+                        />
+                      </div>
+                    )}
+
+                    {/* Import PDF */}
+                    {activeTab === "import" && (
+                      <div className="space-y-4">
+                        <SectionCard title="Import from PDF">
+                          <p className="text-sm mb-4 text-muted-foreground">
+                            Upload your existing resume PDF and we'll
+                            auto-extract your details.
+                          </p>
+                          <input
+                            ref={fileInputRef}
+                            id="resume-pdf-input"
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            className="sr-only"
+                            onChange={handleFileInputChange}
+                          />
+                          <label
+                            htmlFor={
+                              isExtracting ? undefined : "resume-pdf-input"
+                            }
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            data-ocid="resume.dropzone"
+                            className="flex flex-col items-center justify-center gap-3 p-10 rounded-xl cursor-pointer transition-all duration-200 bg-muted"
+                            style={{
+                              border: `2px dashed ${
+                                isDragging
+                                  ? "#4D7CFF"
+                                  : "var(--color-border, #203255)"
+                              }`,
+                              background: isDragging
+                                ? "rgba(77,124,255,0.05)"
+                                : undefined,
+                            }}
+                          >
+                            <AnimatePresence mode="wait">
+                              {isExtracting ? (
+                                <motion.div
+                                  key="extracting"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="flex flex-col items-center gap-3 w-full"
+                                  data-ocid="resume.loading_state"
                                 >
-                                  <FileText
-                                    className="w-6 h-6"
+                                  <Loader2
+                                    className="w-8 h-8 animate-spin"
                                     style={{ color: "#4D7CFF" }}
                                   />
-                                </div>
-                                <p
-                                  className="text-sm font-medium"
-                                  style={{ color: "#EAF0FF" }}
-                                >
-                                  Drop your PDF here or click to browse
-                                </p>
-                                <p
-                                  className="text-xs"
-                                  style={{ color: "#8FA0C6" }}
-                                >
-                                  Auto-fills name, title, email, work history,
-                                  education, skills & projects
-                                </p>
-                                <span
-                                  className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg mt-1"
-                                  style={{
-                                    background:
-                                      "linear-gradient(135deg, #4D7CFF, #35C6FF)",
-                                    color: "white",
-                                  }}
-                                  data-ocid="resume.upload_button"
-                                >
-                                  <Upload className="w-3.5 h-3.5" /> Upload PDF
-                                </span>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </label>
-                      </SectionCard>
-                    </div>
-                  )}
-
-                  {/* Design Tab */}
-                  {activeTab === "design" && (
-                    <div
-                      className="space-y-8"
-                      data-ocid="dashboard.design.panel"
-                    >
-                      {/* Template Picker */}
-                      <div>
-                        <p
-                          className="text-xs font-semibold uppercase tracking-widest mb-5"
-                          style={{ color: "#8FA0C6" }}
-                        >
-                          Portfolio Template
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          {(
-                            [
-                              {
-                                key: "modern",
-                                label: "Modern",
-                                desc: "Gradient hero with card sections",
-                                preview: (
-                                  <div
-                                    className="h-16 rounded-lg overflow-hidden relative"
-                                    style={{ background: "#0F1623" }}
-                                  >
-                                    <div
-                                      className="absolute inset-x-0 top-0 h-8"
-                                      style={{
-                                        background:
-                                          "linear-gradient(to bottom, rgba(77,124,255,0.18), transparent)",
-                                      }}
-                                    />
-                                    <div
-                                      className="absolute left-1/2 -translate-x-1/2 top-2 w-6 h-6 rounded-full"
-                                      style={{
-                                        background:
-                                          "linear-gradient(135deg,#4D7CFF,#35C6FF)",
-                                      }}
-                                    />
-                                    <div className="absolute bottom-2 left-3 right-3 space-y-1">
+                                  <p className="text-sm font-medium text-foreground">
+                                    Extracting your resume...
+                                  </p>
+                                  {/* Progress bar */}
+                                  <div className="w-full max-w-xs space-y-1.5">
+                                    <div className="bg-background rounded-full h-1.5 w-full overflow-hidden">
                                       <div
-                                        className="h-1.5 rounded-full w-full"
-                                        style={{ background: "#1B2A44" }}
-                                      />
-                                      <div
-                                        className="h-1.5 rounded-full w-3/4"
-                                        style={{ background: "#1B2A44" }}
+                                        className="h-full rounded-full transition-all duration-300"
+                                        style={{
+                                          width: extractProgress
+                                            ? `${Math.round((extractProgress.current / extractProgress.total) * 100)}%`
+                                            : "5%",
+                                          background:
+                                            "linear-gradient(90deg, #4D7CFF, #35C6FF)",
+                                        }}
                                       />
                                     </div>
+                                    {extractProgress &&
+                                    extractProgress.total > 0 ? (
+                                      <p className="text-xs text-muted-foreground text-center">
+                                        Processing page{" "}
+                                        {extractProgress.current} of{" "}
+                                        {extractProgress.total}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground text-center">
+                                        Loading PDF library...
+                                      </p>
+                                    )}
                                   </div>
-                                ),
-                              },
-                              {
-                                key: "minimal",
-                                label: "Minimal",
-                                desc: "Clean typography with dividers",
-                                preview: (
+                                </motion.div>
+                              ) : (
+                                <motion.div
+                                  key="idle"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="flex flex-col items-center gap-3"
+                                >
                                   <div
-                                    className="h-16 rounded-lg overflow-hidden px-3 pt-3 space-y-1.5"
-                                    style={{ background: "#0F1623" }}
-                                  >
-                                    <div
-                                      className="h-2 rounded-full w-1/2"
-                                      style={{ background: "#EAF0FF" }}
-                                    />
-                                    <div
-                                      className="h-px w-full"
-                                      style={{ background: "#1B2A44" }}
-                                    />
-                                    <div
-                                      className="h-1 rounded-full w-4/5"
-                                      style={{ background: "#203255" }}
-                                    />
-                                    <div
-                                      className="h-1 rounded-full w-2/3"
-                                      style={{ background: "#203255" }}
-                                    />
-                                  </div>
-                                ),
-                              },
-                              {
-                                key: "creative",
-                                label: "Creative",
-                                desc: "Bold sidebar with timeline",
-                                preview: (
-                                  <div
-                                    className="h-16 rounded-lg overflow-hidden flex"
-                                    style={{ background: "#0F1623" }}
-                                  >
-                                    <div
-                                      className="w-1/3 h-full"
-                                      style={{
-                                        background: "rgba(77,124,255,0.1)",
-                                        borderRight:
-                                          "1px solid rgba(77,124,255,0.15)",
-                                      }}
-                                    >
-                                      <div className="p-2 space-y-1">
-                                        <div
-                                          className="w-5 h-5 rounded-full mx-auto"
-                                          style={{
-                                            background:
-                                              "linear-gradient(135deg,#4D7CFF,#35C6FF)",
-                                          }}
-                                        />
-                                        <div
-                                          className="h-1 rounded-full w-full"
-                                          style={{ background: "#203255" }}
-                                        />
-                                        <div
-                                          className="h-1 rounded-full w-3/4"
-                                          style={{ background: "#203255" }}
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="flex-1 p-2 space-y-1.5">
-                                      <div
-                                        className="h-1 rounded-full w-full"
-                                        style={{ background: "#1B2A44" }}
-                                      />
-                                      <div
-                                        className="h-1 rounded-full w-4/5"
-                                        style={{ background: "#1B2A44" }}
-                                      />
-                                      <div
-                                        className="h-1 rounded-full w-3/5"
-                                        style={{ background: "#1B2A44" }}
-                                      />
-                                    </div>
-                                  </div>
-                                ),
-                              },
-                              {
-                                key: "classic",
-                                label: "Classic",
-                                desc: "Two-column resume layout",
-                                preview: (
-                                  <div
-                                    className="h-16 rounded-lg overflow-hidden"
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center"
                                     style={{
-                                      background: "#0F1623",
-                                      border: "1px solid #1B2A44",
+                                      background: "rgba(77,124,255,0.15)",
                                     }}
                                   >
-                                    <div
-                                      className="h-5 px-2 flex items-center"
-                                      style={{
-                                        borderBottom: "1px solid #1B2A44",
-                                      }}
-                                    >
-                                      <div
-                                        className="h-1.5 rounded-full w-1/3"
-                                        style={{ background: "#EAF0FF" }}
-                                      />
-                                    </div>
-                                    <div className="flex h-[calc(100%-1.25rem)]">
-                                      <div
-                                        className="w-1/3 p-1.5 space-y-1"
-                                        style={{
-                                          borderRight: "1px solid #1B2A44",
-                                        }}
-                                      >
-                                        <div
-                                          className="h-1 rounded-full w-full"
-                                          style={{ background: "#203255" }}
-                                        />
-                                        <div
-                                          className="h-1 rounded-full w-3/4"
-                                          style={{ background: "#203255" }}
-                                        />
-                                      </div>
-                                      <div className="flex-1 p-1.5 space-y-1">
-                                        <div
-                                          className="h-1 rounded-full w-full"
-                                          style={{ background: "#1B2A44" }}
-                                        />
-                                        <div
-                                          className="h-1 rounded-full w-4/5"
-                                          style={{ background: "#1B2A44" }}
-                                        />
-                                        <div
-                                          className="h-1 rounded-full w-3/5"
-                                          style={{ background: "#1B2A44" }}
-                                        />
-                                      </div>
-                                    </div>
+                                    <FileText
+                                      className="w-6 h-6"
+                                      style={{ color: "#4D7CFF" }}
+                                    />
                                   </div>
-                                ),
-                              },
-                            ] as {
-                              key: string;
-                              label: string;
-                              desc: string;
-                              preview: React.ReactNode;
-                            }[]
-                          ).map((tmpl) => {
-                            const isSelected = selectedTemplate === tmpl.key;
-                            return (
-                              <button
-                                key={tmpl.key}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedTemplate(tmpl.key);
-                                  localStorage.setItem(
-                                    "portfolio-template",
-                                    tmpl.key,
-                                  );
-                                }}
-                                className="text-left rounded-xl p-3 transition-all duration-200"
-                                style={{
-                                  border: isSelected
-                                    ? "2px solid #4D7CFF"
-                                    : "2px solid #1B2A44",
-                                  background: isSelected
-                                    ? "rgba(77,124,255,0.08)"
-                                    : "#0E1628",
-                                }}
-                                data-ocid="dashboard.design.button"
-                              >
-                                {tmpl.preview}
-                                <p
-                                  className="text-xs font-semibold mt-2"
-                                  style={{
-                                    color: isSelected ? "#4D7CFF" : "#EAF0FF",
-                                  }}
-                                >
-                                  {tmpl.label}
-                                </p>
-                                <p
-                                  className="text-xs mt-0.5"
-                                  style={{ color: "#8FA0C6" }}
-                                >
-                                  {tmpl.desc}
-                                </p>
-                              </button>
-                            );
-                          })}
-                        </div>
+                                  <p className="text-sm font-medium text-foreground">
+                                    Drop your PDF here or click to browse
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Auto-fills name, title, email, work history,
+                                    education, skills &amp; projects
+                                  </p>
+                                  <span
+                                    className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg mt-1"
+                                    style={{
+                                      background: "rgba(77,124,255,0.12)",
+                                      color: "#4D7CFF",
+                                      border: "1px solid rgba(77,124,255,0.25)",
+                                    }}
+                                  >
+                                    <Upload className="w-3.5 h-3.5" />
+                                    Choose PDF
+                                  </span>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </label>
+                        </SectionCard>
                       </div>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
 
-                      {/* Accent Color Picker */}
-                      <div>
-                        <p
-                          className="text-xs font-semibold uppercase tracking-widest mb-4"
-                          style={{ color: "#8FA0C6" }}
-                        >
-                          Accent Color
-                        </p>
-                        <div className="flex flex-wrap gap-3">
-                          {(
-                            [
-                              { hue: "265", label: "Blue" },
-                              { hue: "280", label: "Indigo" },
-                              { hue: "300", label: "Purple" },
-                              { hue: "340", label: "Pink" },
-                              { hue: "20", label: "Red" },
-                              { hue: "50", label: "Orange" },
-                              { hue: "80", label: "Yellow" },
-                              { hue: "150", label: "Green" },
-                              { hue: "185", label: "Teal" },
-                              { hue: "210", label: "Cyan" },
-                            ] as { hue: string; label: string }[]
-                          ).map(({ hue, label }) => {
-                            const isSelected = accentColor === hue;
-                            return (
-                              <button
-                                key={hue}
-                                type="button"
-                                title={label}
-                                onClick={() => setAccentColor(hue)}
-                                className="w-9 h-9 rounded-full transition-all duration-200 flex-shrink-0"
+            {/* RIGHT: Live Preview */}
+            <div
+              className="flex flex-col overflow-hidden"
+              style={{ width: "45%" }}
+            >
+              <div className="flex items-center justify-between px-5 py-3 flex-shrink-0 border-b border-border bg-card">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Live Preview
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: "#35C6FF" }}
+                  />
+                  <span className="text-xs" style={{ color: "#35C6FF" }}>
+                    Live
+                  </span>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto bg-background">
+                {personal.name ||
+                work.length > 0 ||
+                education.length > 0 ||
+                skills.length > 0 ? (
+                  <div style={{ zoom: 0.55, pointerEvents: "none" }}>
+                    {(() => {
+                      const ActiveTemplate =
+                        TEMPLATE_MAP[selectedTemplate] ?? TemplateModern;
+                      return <ActiveTemplate portfolio={previewPortfolio} />;
+                    })()}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full py-16 text-muted-foreground">
+                    <FileText className="w-10 h-10 mb-3 opacity-40" />
+                    <p className="text-sm text-center opacity-60">
+                      Fill in your details on the left
+                      <br />
+                      to see your resume preview here
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Portfolio Builder ── */}
+        {activeSection === "portfolio" && (
+          <div className="flex-1 overflow-hidden flex gap-0">
+            {/* LEFT: Portfolio Settings */}
+            <div
+              className="flex flex-col overflow-y-auto border-r border-border bg-background"
+              style={{ width: "55%" }}
+            >
+              <div className="p-6 space-y-6">
+                {/* Header */}
+                <div>
+                  <h2 className="text-base font-bold text-foreground mb-1">
+                    Portfolio Settings
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Customize how your public portfolio looks and feels.
+                  </p>
+                </div>
+
+                {/* Template Picker */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-muted-foreground">
+                    Template
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(
+                      [
+                        {
+                          key: "modern",
+                          label: "Modern",
+                          desc: "Clean cards with gradient accents",
+                          preview: (
+                            <div
+                              className="h-16 rounded-lg overflow-hidden px-3 pt-2.5"
+                              style={{ background: "#0F1623" }}
+                            >
+                              <div
+                                className="h-2 rounded-full w-2/5 mb-1.5"
                                 style={{
-                                  background: `oklch(0.58 0.22 ${hue})`,
-                                  outline: isSelected
-                                    ? `3px solid oklch(0.58 0.22 ${hue})`
-                                    : "3px solid transparent",
-                                  outlineOffset: "3px",
-                                  boxShadow: isSelected
-                                    ? "0 0 0 1px #0B1020"
-                                    : "none",
+                                  background:
+                                    "linear-gradient(90deg,#4D7CFF,#35C6FF)",
                                 }}
-                                data-ocid="dashboard.design.toggle"
                               />
+                              <div
+                                className="h-1 rounded-full w-4/5 mb-1"
+                                style={{ background: "#1B2A44" }}
+                              />
+                              <div
+                                className="h-1 rounded-full w-3/5"
+                                style={{ background: "#1B2A44" }}
+                              />
+                            </div>
+                          ),
+                        },
+                        {
+                          key: "classic",
+                          label: "Classic",
+                          desc: "Traditional two-column layout",
+                          preview: (
+                            <div
+                              className="h-16 rounded-lg overflow-hidden"
+                              style={{ background: "#0F1623" }}
+                            >
+                              <div
+                                className="h-3.5 w-full"
+                                style={{ borderBottom: "1px solid #1B2A44" }}
+                              >
+                                <div
+                                  className="h-1.5 rounded-full w-1/3"
+                                  style={{ background: "#EAF0FF" }}
+                                />
+                              </div>
+                              <div className="flex h-[calc(100%-1.25rem)]">
+                                <div
+                                  className="w-1/3 p-1.5 space-y-1"
+                                  style={{ borderRight: "1px solid #1B2A44" }}
+                                >
+                                  <div
+                                    className="h-1 rounded-full w-full"
+                                    style={{ background: "#203255" }}
+                                  />
+                                  <div
+                                    className="h-1 rounded-full w-3/4"
+                                    style={{ background: "#203255" }}
+                                  />
+                                </div>
+                                <div className="flex-1 p-1.5 space-y-1">
+                                  <div
+                                    className="h-1 rounded-full w-full"
+                                    style={{ background: "#1B2A44" }}
+                                  />
+                                  <div
+                                    className="h-1 rounded-full w-4/5"
+                                    style={{ background: "#1B2A44" }}
+                                  />
+                                  <div
+                                    className="h-1 rounded-full w-3/5"
+                                    style={{ background: "#1B2A44" }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          key: "minimal",
+                          label: "Minimal",
+                          desc: "Clean typography with dividers",
+                          preview: (
+                            <div
+                              className="h-16 rounded-lg overflow-hidden p-3"
+                              style={{ background: "#0F1623" }}
+                            >
+                              <div
+                                className="h-2 rounded-full w-1/2 mb-2"
+                                style={{ background: "#EAF0FF" }}
+                              />
+                              <div
+                                className="h-px w-full mb-2"
+                                style={{ background: "#1B2A44" }}
+                              />
+                              <div
+                                className="h-1 rounded-full w-full mb-1"
+                                style={{ background: "#1B2A44" }}
+                              />
+                              <div
+                                className="h-1 rounded-full w-4/5"
+                                style={{ background: "#1B2A44" }}
+                              />
+                            </div>
+                          ),
+                        },
+                        {
+                          key: "creative",
+                          label: "Creative",
+                          desc: "Bold colors and dynamic layout",
+                          preview: (
+                            <div
+                              className="h-16 rounded-lg overflow-hidden"
+                              style={{ background: "#0F1623" }}
+                            >
+                              <div
+                                className="h-1/3 w-full"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg,#4D7CFF,#35C6FF)",
+                                }}
+                              />
+                              <div className="p-2 space-y-1">
+                                <div
+                                  className="h-1 rounded-full w-3/5"
+                                  style={{ background: "#1B2A44" }}
+                                />
+                                <div
+                                  className="h-1 rounded-full w-4/5"
+                                  style={{ background: "#1B2A44" }}
+                                />
+                              </div>
+                            </div>
+                          ),
+                        },
+                      ] as {
+                        key: string;
+                        label: string;
+                        desc: string;
+                        preview: React.ReactNode;
+                      }[]
+                    ).map((tmpl) => {
+                      const isSelected = selectedTemplate === tmpl.key;
+                      return (
+                        <button
+                          key={tmpl.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTemplate(tmpl.key);
+                            localStorage.setItem(
+                              "portfolio-template",
+                              tmpl.key,
                             );
-                          })}
-                        </div>
-                        <p
-                          className="text-xs mt-3"
-                          style={{ color: "#8FA0C6" }}
+                          }}
+                          className="relative rounded-xl overflow-hidden transition-all duration-200 text-left border-2"
+                          style={
+                            isSelected
+                              ? {
+                                  borderColor: "#4D7CFF",
+                                  background: "rgba(77,124,255,0.08)",
+                                }
+                              : {
+                                  borderColor: "transparent",
+                                  background: "rgba(255,255,255,0.03)",
+                                }
+                          }
+                          data-ocid="portfolio.template.toggle"
                         >
-                          Changes apply instantly across your portfolio.
-                        </p>
+                          {tmpl.preview}
+                          <div className="px-3 py-2">
+                            <p className="text-xs font-semibold text-foreground">
+                              {tmpl.label}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {tmpl.desc}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <div
+                              className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                              style={{ background: "#4D7CFF" }}
+                            >
+                              <CheckCircle className="w-3 h-3 text-white" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Accent Color */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-muted-foreground">
+                    Accent Color
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {(
+                      [
+                        { hue: "265", label: "Blue" },
+                        { hue: "280", label: "Indigo" },
+                        { hue: "300", label: "Purple" },
+                        { hue: "340", label: "Pink" },
+                        { hue: "20", label: "Red" },
+                        { hue: "50", label: "Orange" },
+                        { hue: "80", label: "Yellow" },
+                        { hue: "150", label: "Green" },
+                        { hue: "185", label: "Teal" },
+                        { hue: "210", label: "Cyan" },
+                      ] as { hue: string; label: string }[]
+                    ).map(({ hue, label }) => {
+                      const isSelected = accentColor === hue;
+                      return (
+                        <button
+                          key={hue}
+                          type="button"
+                          title={label}
+                          onClick={() => setAccentColor(hue)}
+                          className="w-8 h-8 rounded-full transition-all duration-200 flex-shrink-0"
+                          style={{
+                            background: `oklch(0.58 0.22 ${hue})`,
+                            outline: isSelected
+                              ? `3px solid oklch(0.58 0.22 ${hue})`
+                              : "3px solid transparent",
+                            outlineOffset: "3px",
+                          }}
+                          data-ocid="portfolio.accent.toggle"
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Bio Override */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-1 text-muted-foreground">
+                    Portfolio Bio
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mb-2">
+                    This appears on your public portfolio page.
+                  </p>
+                  <Textarea
+                    value={personal.bio}
+                    onChange={(e) =>
+                      setPersonal((p) => ({ ...p, bio: e.target.value }))
+                    }
+                    placeholder="Write a compelling bio for your portfolio visitors..."
+                    className="text-sm bg-muted border-border text-foreground resize-none"
+                    rows={4}
+                    data-ocid="portfolio.bio.textarea"
+                  />
+                </div>
+
+                {/* Publish Status */}
+                <div className="rounded-xl p-4 border border-border bg-card">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-foreground">
+                      Published Status
+                    </p>
+                    <Switch
+                      checked={portfolio?.isPublished ?? false}
+                      onCheckedChange={handlePublishToggle}
+                      disabled={isPublishing}
+                      data-ocid="portfolio.publish.switch"
+                    />
+                  </div>
+                  {portfolio?.isPublished ? (
+                    <p
+                      className="text-xs font-medium"
+                      style={{ color: "#22c55e" }}
+                    >
+                      ● Your portfolio is live
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Not published yet
+                    </p>
+                  )}
+                  {portfolio?.isPublished && principalId && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.navigate({ to: `/portfolio/${principalId}` })
+                      }
+                      className="mt-3 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
+                      style={{
+                        background: "rgba(53,198,255,0.1)",
+                        color: "#35C6FF",
+                        border: "1px solid rgba(53,198,255,0.25)",
+                      }}
+                      data-ocid="portfolio.view_live.button"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View Live →
+                    </button>
+                  )}
+                </div>
+
+                {/* Note */}
+                <div
+                  className="rounded-lg px-4 py-3 text-xs text-muted-foreground border border-border"
+                  style={{ background: "rgba(77,124,255,0.04)" }}
+                >
+                  <span style={{ color: "#4D7CFF" }}>💡</span> Edit your content
+                  (name, work, education, skills) in the{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveSection("resume");
+                      setActiveTab("personal");
+                    }}
+                    className="underline font-medium"
+                    style={{ color: "#4D7CFF" }}
+                    data-ocid="portfolio.resume_tab.link"
+                  >
+                    Resume tab
+                  </button>
+                  .
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: Portfolio Website Preview */}
+            <div
+              className="flex flex-col overflow-hidden"
+              style={{ width: "45%" }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3 flex-shrink-0 border-b border-border bg-card">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Website Preview
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: "#35C6FF" }}
+                  />
+                  <span className="text-xs" style={{ color: "#35C6FF" }}>
+                    Live
+                  </span>
+                </div>
+              </div>
+
+              {/* Browser chrome + preview */}
+              <div
+                className="flex-1 overflow-hidden flex flex-col"
+                style={{ background: "#f5f6fa" }}
+              >
+                {/* Browser chrome bar */}
+                <div
+                  style={{
+                    background: "#e8eaf0",
+                    padding: "8px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    flexShrink: 0,
+                    borderBottom: "1px solid #d0d4dc",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#ff5f57",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#febc2e",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#28c840",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div
+                    style={{
+                      flex: 1,
+                      margin: "0 8px",
+                      background: "white",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      color: "#666",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    folio.app/{username || "your-portfolio"}
+                  </div>
+                </div>
+
+                {/* Scrollable preview area */}
+                <div className="flex-1 overflow-y-auto bg-white">
+                  {personal.name ||
+                  work.length > 0 ||
+                  education.length > 0 ||
+                  skills.length > 0 ? (
+                    <div style={{ zoom: 0.45, pointerEvents: "none" }}>
+                      {(() => {
+                        const ActiveTemplate =
+                          TEMPLATE_MAP[selectedTemplate] ?? TemplateModern;
+                        return <ActiveTemplate portfolio={previewPortfolio} />;
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full py-16 px-6 text-center">
+                      <div
+                        className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+                        style={{ background: "rgba(77,124,255,0.1)" }}
+                      >
+                        <Globe
+                          className="w-6 h-6"
+                          style={{ color: "#4D7CFF" }}
+                        />
                       </div>
+                      <p className="text-sm font-medium text-foreground mb-1">
+                        No content yet
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Fill in your content in the Resume tab to preview your
+                        portfolio here
+                      </p>
                     </div>
                   )}
-                </motion.div>
-              </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  function removeSkill(skill: string) {
+    setSkills((prev) => prev.filter((s) => s !== skill));
+  }
+}
+
+// ── Dashboard Overview Panel ──
+
+function DashboardOverviewPanel({
+  displayName,
+  completenessScore,
+  isPublished,
+  credits,
+  isPro,
+  onEditResume,
+  onViewPortfolio,
+}: {
+  displayName: string;
+  completenessScore: number;
+  isPublished: boolean;
+  credits: number;
+  isPro: boolean;
+  onEditResume: () => void;
+  onViewPortfolio: () => void;
+}) {
+  return (
+    <div className="flex-1 overflow-y-auto p-6 bg-background">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="max-w-3xl space-y-6"
+      >
+        {/* Greeting */}
+        <div>
+          <h2
+            className="text-2xl font-bold text-foreground"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            Welcome back,{" "}
+            <span
+              style={{
+                background: "linear-gradient(135deg, #4D7CFF, #35C6FF)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              {displayName || "there"}
+            </span>
+            !
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Here's an overview of your portfolio and resume status.
+          </p>
+        </div>
+
+        {/* Stats cards */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div
+            className="bg-card border border-border rounded-xl p-4"
+            data-ocid="dashboard.card"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-4 h-4" style={{ color: "#4D7CFF" }} />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Completeness
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {completenessScore}%
+            </p>
+            <div className="mt-2 bg-muted rounded-full h-1.5 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${completenessScore}%`,
+                  background: "linear-gradient(90deg, #4D7CFF, #35C6FF)",
+                }}
+              />
             </div>
           </div>
 
-          {/* RIGHT: Live Preview */}
           <div
-            className="flex flex-col overflow-hidden"
-            style={{ width: "45%" }}
+            className="bg-card border border-border rounded-xl p-4"
+            data-ocid="dashboard.card"
           >
-            <div
-              className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-              style={{
-                borderBottom: "1px solid #1B2A44",
-                background: "#0E1628",
-              }}
-            >
-              <span
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "#8FA0C6" }}
-              >
-                Live Preview
+            <div className="flex items-center gap-2 mb-2">
+              <Globe
+                className="w-4 h-4"
+                style={{ color: isPublished ? "#35C6FF" : "#8FA0C6" }}
+              />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Published
               </span>
-              <div className="flex items-center gap-1.5">
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: "#35C6FF" }}
-                />
-                <span className="text-xs" style={{ color: "#35C6FF" }}>
-                  Live
-                </span>
-              </div>
             </div>
-            <div
-              className="flex-1 overflow-y-auto"
-              style={{ background: "#0B1020" }}
+            <p
+              className="text-lg font-bold"
+              style={{ color: isPublished ? "#35C6FF" : "#8FA0C6" }}
             >
-              {personal.name ||
-              work.length > 0 ||
-              education.length > 0 ||
-              skills.length > 0 ? (
-                <div style={{ zoom: 0.55, pointerEvents: "none" }}>
-                  {(() => {
-                    const ActiveTemplate =
-                      TEMPLATE_MAP[selectedTemplate] ?? TemplateModern;
-                    return <ActiveTemplate portfolio={previewPortfolio} />;
-                  })()}
-                </div>
-              ) : (
+              {isPublished ? "Live" : "Draft"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isPublished ? "Visible to public" : "Not yet public"}
+            </p>
+          </div>
+
+          <div
+            className="bg-card border border-border rounded-xl p-4"
+            data-ocid="dashboard.card"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="w-4 h-4" style={{ color: "#4D7CFF" }} />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Credits
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-foreground">{credits}</p>
+            <p className="text-xs text-muted-foreground mt-1">Available</p>
+          </div>
+
+          <div
+            className="bg-card border border-border rounded-xl p-4"
+            data-ocid="dashboard.card"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle
+                className="w-4 h-4"
+                style={{ color: isPro ? "#4D7CFF" : "#8FA0C6" }}
+              />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Plan
+              </span>
+            </div>
+            <p
+              className="text-lg font-bold"
+              style={{ color: isPro ? "#4D7CFF" : undefined }}
+            >
+              {isPro ? "Pro" : "Free"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isPro ? "All features unlocked" : "5 credits included"}
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3">
+            Quick Actions
+          </h3>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={onEditResume}
+              className="font-semibold border-0"
+              style={{
+                background: "linear-gradient(135deg, #4D7CFF, #35C6FF)",
+                color: "white",
+              }}
+              data-ocid="dashboard.primary_button"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Edit Resume
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onViewPortfolio}
+              className="border-border text-foreground"
+              data-ocid="dashboard.secondary_button"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              View Portfolio
+            </Button>
+          </div>
+        </div>
+
+        {/* Tips */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3">
+            Tips to improve your profile
+          </h3>
+          <div className="space-y-3">
+            {[
+              {
+                icon: <User className="w-4 h-4" />,
+                tip: "Add a professional bio to introduce yourself to potential employers.",
+              },
+              {
+                icon: <Briefcase className="w-4 h-4" />,
+                tip: "Fill in at least 2-3 work experiences for a complete resume.",
+              },
+              {
+                icon: <Code2 className="w-4 h-4" />,
+                tip: "List 8-12 skills to improve discoverability and keyword matching.",
+              },
+              {
+                icon: <FolderGit2 className="w-4 h-4" />,
+                tip: "Add 2-3 projects with descriptions to showcase your practical work.",
+              },
+            ].map((item) => (
+              <div key={item.tip} className="flex items-start gap-3">
                 <div
-                  className="flex flex-col items-center justify-center h-full py-16"
-                  style={{ color: "#8FA0C6" }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{
+                    background: "rgba(77,124,255,0.12)",
+                    color: "#4D7CFF",
+                  }}
                 >
-                  <FileText className="w-10 h-10 mb-3 opacity-40" />
-                  <p className="text-sm text-center opacity-60">
-                    Fill in your details on the left
-                    <br />
-                    to see your resume preview here
-                  </p>
+                  {item.icon}
                 </div>
-              )}
+                <p className="text-sm text-muted-foreground">{item.tip}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── Settings Panel ──
+
+function SettingsPanel({
+  displayName,
+  username,
+  principalId,
+  isPro,
+  theme,
+  toggleTheme,
+  accentColor,
+  setAccentColor,
+  onLogout,
+}: {
+  displayName: string;
+  username: string;
+  principalId: string;
+  isPro: boolean;
+  theme: string;
+  toggleTheme: () => void;
+  accentColor: string;
+  setAccentColor: (hue: string) => void;
+  onLogout: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyPrincipal = () => {
+    navigator.clipboard.writeText(principalId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const truncatePrincipal = (id: string) =>
+    id.length > 20 ? `${id.slice(0, 10)}...${id.slice(-6)}` : id;
+
+  return (
+    <div className="flex-1 overflow-y-auto p-6 bg-background">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="max-w-2xl space-y-5"
+      >
+        {/* Account section */}
+        <div
+          className="bg-card border border-border rounded-xl p-5"
+          data-ocid="settings.card"
+        >
+          <h3 className="text-sm font-semibold text-foreground mb-4">
+            Account
+          </h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-2 border-b border-border">
+              <span className="text-sm text-muted-foreground">
+                Display Name
+              </span>
+              <span className="text-sm font-medium text-foreground">
+                {displayName || "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-border">
+              <span className="text-sm text-muted-foreground">Username</span>
+              <span className="text-sm font-medium text-foreground">
+                {username ? `@${username}` : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-border">
+              <span className="text-sm text-muted-foreground">Plan</span>
+              <span
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold"
+                style={
+                  isPro
+                    ? {
+                        background: "rgba(77,124,255,0.15)",
+                        color: "#4D7CFF",
+                        border: "1px solid rgba(77,124,255,0.3)",
+                      }
+                    : {
+                        background: "rgba(143,160,198,0.1)",
+                        color: "#8FA0C6",
+                        border: "1px solid rgba(143,160,198,0.2)",
+                      }
+                }
+              >
+                {isPro && <Zap className="w-3 h-3" />}
+                {isPro ? "Pro" : "Free"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm text-muted-foreground">
+                Principal ID
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyPrincipal}
+                className="flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg transition-all hover:opacity-80 bg-muted border border-border text-foreground"
+                data-ocid="settings.secondary_button"
+              >
+                {truncatePrincipal(principalId)}
+                {copied ? (
+                  <CheckCircle
+                    className="w-3 h-3"
+                    style={{ color: "#35C6FF" }}
+                  />
+                ) : (
+                  <Copy className="w-3 h-3 text-muted-foreground" />
+                )}
+              </button>
             </div>
           </div>
         </div>
-      </div>
+
+        {/* Appearance */}
+        <div
+          className="bg-card border border-border rounded-xl p-5"
+          data-ocid="settings.card"
+        >
+          <h3 className="text-sm font-semibold text-foreground mb-4">
+            Appearance
+          </h3>
+
+          {/* Theme toggle */}
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <p className="text-sm font-medium text-foreground">Color Theme</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Switch between light and dark mode
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-medium text-sm transition-all hover:opacity-90 border border-border bg-muted text-foreground"
+              data-ocid="settings.toggle"
+            >
+              {theme === "dark" ? (
+                <>
+                  <Sun className="w-4 h-4" style={{ color: "#4D7CFF" }} />
+                  Light Mode
+                </>
+              ) : (
+                <>
+                  <Moon className="w-4 h-4" style={{ color: "#4D7CFF" }} />
+                  Dark Mode
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Accent color */}
+          <div>
+            <p className="text-sm font-medium text-foreground mb-1">
+              Accent Color
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Personalizes your portfolio and dashboard highlights
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { hue: "265", label: "Blue" },
+                { hue: "280", label: "Indigo" },
+                { hue: "300", label: "Purple" },
+                { hue: "340", label: "Pink" },
+                { hue: "20", label: "Red" },
+                { hue: "50", label: "Orange" },
+                { hue: "80", label: "Yellow" },
+                { hue: "150", label: "Green" },
+                { hue: "185", label: "Teal" },
+                { hue: "210", label: "Cyan" },
+              ].map(({ hue, label }) => {
+                const isSelected = accentColor === hue;
+                return (
+                  <button
+                    key={hue}
+                    type="button"
+                    title={label}
+                    onClick={() => setAccentColor(hue)}
+                    className="w-9 h-9 rounded-full transition-all duration-200 flex-shrink-0"
+                    style={{
+                      background: `oklch(0.58 0.22 ${hue})`,
+                      outline: isSelected
+                        ? `3px solid oklch(0.58 0.22 ${hue})`
+                        : "3px solid transparent",
+                      outlineOffset: "3px",
+                    }}
+                    data-ocid="settings.toggle"
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Danger zone */}
+        <div
+          className="bg-card border border-border rounded-xl p-5"
+          data-ocid="settings.card"
+        >
+          <h3 className="text-sm font-semibold text-foreground mb-1">
+            Danger Zone
+          </h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            Actions here cannot be undone
+          </p>
+          <Button
+            variant="outline"
+            onClick={onLogout}
+            className="border-destructive/40 text-destructive hover:bg-destructive/10"
+            data-ocid="settings.delete_button"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Log Out
+          </Button>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -1932,20 +2557,17 @@ function SectionCard({
 }) {
   return (
     <div
-      className="rounded-xl p-5"
-      style={{ background: "#0E1628", border: "1px solid #1B2A44" }}
+      className="rounded-xl p-5 bg-card border border-border"
       data-ocid={ocid}
     >
       <div className="flex items-center justify-between mb-4">
-        <h4 className="text-sm font-semibold" style={{ color: "#EAF0FF" }}>
-          {title}
-        </h4>
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
         {onDelete && (
           <button
             type="button"
             onClick={onDelete}
             className="p-1.5 rounded-lg transition-all hover:opacity-70"
-            style={{ color: "#8FA0C6", background: "rgba(255,80,80,0.1)" }}
+            style={{ background: "rgba(255,80,80,0.1)" }}
             data-ocid={deleteOcid}
           >
             <Trash2 className="w-3.5 h-3.5" style={{ color: "#ff5a5a" }} />
@@ -1968,7 +2590,7 @@ function FieldGroup({
 }) {
   return (
     <div className={`space-y-1 ${className}`}>
-      <Label className="text-xs font-medium" style={{ color: "#8FA0C6" }}>
+      <Label className="text-xs font-medium text-muted-foreground">
         {label}
       </Label>
       {children}
@@ -1995,12 +2617,7 @@ function DarkInput({
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      className="h-8 text-sm"
-      style={{
-        background: "#111B30",
-        border: "1px solid #203255",
-        color: "#EAF0FF",
-      }}
+      className="h-8 text-sm bg-muted border-border text-foreground"
       data-ocid={ocid}
     />
   );
@@ -2022,12 +2639,7 @@ function DarkTextarea({
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      className="text-sm min-h-[80px] resize-none"
-      style={{
-        background: "#111B30",
-        border: "1px solid #203255",
-        color: "#EAF0FF",
-      }}
+      className="text-sm min-h-[80px] resize-none bg-muted border-border text-foreground"
       data-ocid={ocid}
     />
   );
@@ -2044,16 +2656,11 @@ function EmptyState({
 }) {
   return (
     <div
-      className="rounded-xl p-10 flex flex-col items-center justify-center text-center"
-      style={{ background: "#0E1628", border: "1px dashed #1B2A44" }}
+      className="rounded-xl p-10 flex flex-col items-center justify-center text-center bg-card border border-dashed border-border"
       data-ocid={ocid}
     >
-      <div className="mb-3" style={{ color: "#8FA0C6", opacity: 0.6 }}>
-        {icon}
-      </div>
-      <p className="text-sm" style={{ color: "#8FA0C6" }}>
-        {message}
-      </p>
+      <div className="mb-3 text-muted-foreground opacity-60">{icon}</div>
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }
@@ -2071,12 +2678,7 @@ function AddButton({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all hover:opacity-80"
-      style={{
-        background: "#0E1628",
-        border: "1px dashed #1B2A44",
-        color: "#8FA0C6",
-      }}
+      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all hover:opacity-80 bg-card border border-dashed border-border text-muted-foreground"
       data-ocid={ocid}
     >
       <Plus className="w-4 h-4" /> {label}
